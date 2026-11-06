@@ -10,7 +10,7 @@ The MVP includes native patient booking and an admin/staff interface. PostgreSQL
 
 ## Login requirements
 
-- **Shared login page:** `/admin` for both admin and staff. Admin enters email + PIN; staff enter email + requested email code and can never use PIN login. The requested three-field layout is awaiting clarification of the field labels.
+- **Shared login page:** Identical `/admin` form for admin and staff: **Email**, **PIN**, **Email code**, plus **Send code** and **Sign in**. All fields are visible before login. Admin fills Email + PIN; staff use Send code and fill Email + Email code. No role selector; the server rejects staff PIN login.
 - **Patient:** Enter email, receive a one-time code and sign in to access only their own bookings.
 - **Doctor/admin:** Bootstrap creates the initial admin with an email and four-digit PIN. Sign in through `/admin` using that PIN; no emailed login code. The admin can change the PIN later.
 - **Staff:** The admin adds the account and permissions. Staff sign in through the admin interface using a one-time code sent by email.

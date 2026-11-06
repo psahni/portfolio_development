@@ -31,8 +31,10 @@ Four-digit PINs have limited entropy, so PIN hashing, persistent lockout and req
 
 ## Shared login screen — M2, planned
 
-- One `/admin` login page for both admin and staff. Admin uses email + PIN; staff use email + requested email code only. Staff PIN login must always be rejected server-side.
-- Layout clarification is pending: the user requested three fields. The proposed interpretation is separate Email, PIN and Email code inputs, with PIN unavailable for staff; do not treat that interpretation as confirmed.
+- The identical `/admin` form is shown to everyone before login: **Email**, **PIN**, **Email code**, **Send code** and **Sign in**. No role selector, separate staff page or role-based field disabling.
+- Admin fills Email + PIN; staff request a code and fill Email + Email code. Require exactly one of PIN/Email code; reject both-filled or neither-filled submissions.
+- The filled field selects the requested method. Server-side account and credential checks enforce privileges; staff PIN login is rejected even if they submit the admin PIN or local test code.
+- Keep code-request responses generic: do not expose account existence or role in the form. The UI does not need to identify the role before rendering.
 - Resolve the allowed method through server-side account checks; credential length never determines role or privileges. Verify that local staff code `0000` still uses the requested-code flow.
 - This is the UI contract for M2; the screen is not implemented or verified in this foundation revision.
 
