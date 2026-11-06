@@ -2,11 +2,13 @@
 
 **Status: Approach 1 approved. Spec-driven implementation starts with [M1](specs/M1_FOUNDATION.md).**
 
-**Progress:** M1 and the [code/PIN auth revision](specs/AUTH_CODE_REVISION.md) pass 29 tests, typecheck, lint and production build. The revision supersedes password login. Browser visual QA and M2 login forms remain pending.
+**Progress:** ✅ M1 foundation, M2.1 access checks and M2.2 shared clinic login are implemented. The [auth revision](specs/AUTH_CODE_REVISION.md) records the flow and checks. Staff management, PIN-change screens and real email delivery remain pending.
 
 Scope: **one clinic, one branch and one doctor**. Multiple clinics/branches are deferred.
 
 The MVP includes native patient booking and an admin/staff interface. PostgreSQL owns bookings; Google Calendar is an optional outbound mirror.
+
+**Delivery priority:** Complete working features one approved task at a time. Keep essential access checks, input validation and credential protection; defer sophisticated security infrastructure to the separate M6 security-hardening task.
 
 ## Login requirements
 
@@ -28,7 +30,7 @@ Build in small stages and review each working stage with the clinic.
 3. **Doctor and staff booking (M3):** Add the doctor's agenda, availability, receptionist booking and rescheduling. Let the doctor cancel a booking, block that time if unavailable and suggest another time or ask the patient to rebook.
 4. **Patient booking (M4):** Add patient email-code sign-in, the hosted booking page, website button, duplicate-submit protection and instant confirmation.
 5. **Integrations (M5):** Add optional Google Calendar sync and automatic cancellation emails with suggestions/rebooking links. Validate WhatsApp confirmations/reminders before enabling automation; retain manual links for follow-up.
-6. **Launch checks (M6):** Complete security, booking, backup and usability checks before a small pilot.
+6. **Launch checks (M6):** Run a separate security-hardening task (shared abuse limits and security review), then complete booking, backup and usability checks before a small pilot.
 
 - **Best for:** Validating how a clinic actually manages appointments.
 - **Benefit:** Staff can review scheduling rules before patients use them.

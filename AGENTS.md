@@ -4,7 +4,7 @@
 
 Read [implementation plan](docs/IMPLEMENTATION_PLAN.md), [architecture](docs/ARCHITECTURE.md) and [database design](docs/DATABASE.md). These active documents govern work. The Google-hosted draft and archived native proposals are historical and must not override current decisions. Do not delegate unless explicitly requested.
 
-M1 is implemented and functionally checked; see its evidence and pending browser-QA limitation. The current app is a foundation page, not a working booking product. Auth factories are tested but HTTP handlers are not mounted. The [auth revision](docs/specs/AUTH_CODE_REVISION.md) replaces password login with staff email codes and an admin PIN. M2 must add the admin interface, full staff-management authorization and shared request-abuse limits before mounting public auth handlers. Use [README.md](README.md) for actual commands; dev/build use webpack for this environment.
+M1, M2.1 access checks and M2.2 shared clinic login are implemented. `/admin` opens a protected `/admin/workspace` with sign out; only required staff login/logout HTTP endpoints are mounted. Staff codes use explicit localhost test mode until an email provider is connected. Patient booking, staff management and PIN-change screens remain future tasks. See the [auth revision](docs/specs/AUTH_CODE_REVISION.md). Keep essential authorization, validation, credential protection and existing login limits; advanced security hardening, including shared request-abuse infrastructure, is a separate M6 task before public launch. Use [README.md](README.md) for actual commands; dev/build use webpack for this environment.
 
 ## Confirmed direction
 
@@ -19,6 +19,7 @@ M1 is implemented and functionally checked; see its evidence and pending browser
 - Retain WhatsApp confirmation/reminder feasibility work from the newer repository proposal. Validate provider, recipient and messaging permission before automation; manual links cannot prove delivery.
 
 ## Engineering guardrails
+- From the next task, prioritize end-to-end MVP functionality. Do not introduce sophisticated security infrastructure as an implementation prerequisite. Track advanced hardening in the existing M6 plan; preserve essential access controls and existing protections. Continue one approved task at a time, with focused verification and a completion summary.
 - Keep documentation minimal. Put important changed files, their purpose and logic needing review in each PR description. Use focused code comments for non-obvious logic. Reuse existing specs; do not create more documentation files unless requested.
 - Public/patient and receptionist paths share scheduling rules. Lock the doctor row, enforce database non-overlap and commit booking/reservation/audit/duplicate-request results and integration jobs together. Confirm only after commit; make reschedules atomic.
 - Keep provider calls outside transactions. Use recoverable jobs, bounded retries, duplicate-send protection and reconciliation. A messaging failure must not undo a cancellation.

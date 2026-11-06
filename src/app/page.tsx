@@ -11,12 +11,12 @@ export default function Home() {
           <span className="rounded-xl bg-primary p-2.5 text-primary-foreground"><Heart aria-hidden="true" className="size-5" /></span>
           <span className="font-semibold tracking-tight">nuvortiq<span className="ml-2 hidden text-xs font-normal tracking-wide text-muted-foreground sm:inline">SMART BOOKING</span></span>
         </Link>
-        <span className="rounded-full bg-muted px-3 py-1.5 text-xs text-muted-foreground">Clinic setup in progress</span>
+        <Button asChild variant="outline" size="sm"><Link href="/admin">Clinic sign in <ArrowUpRight aria-hidden="true" /></Link></Button>
       </header>
       <section className="max-w-3xl py-20 md:py-28">
         <p className="mb-5 text-xs font-semibold tracking-[0.18em] text-primary uppercase">A little less waiting. A little more care.</p>
         <h1 className="text-4xl leading-[1.12] font-medium tracking-tight sm:text-5xl md:text-7xl">Care starts with<br /><span className="text-primary">a simpler appointment.</span></h1>
-        <p className="mt-7 max-w-xl text-lg leading-relaxed text-muted-foreground">We’re preparing a simpler way to connect with your clinic. Online bookings and the clinic workspace will be available here soon.</p>
+        <p className="mt-7 max-w-xl text-lg leading-relaxed text-muted-foreground">We’re preparing a simpler way to connect with your clinic. Online booking is coming soon. Clinic staff can sign in to their workspace.</p>
         <Button asChild variant="outline" className="mt-8"><a href="#what-to-expect">What to expect <ArrowUpRight aria-hidden="true" /></a></Button>
       </section>
       <section id="what-to-expect" aria-label="What to expect" className="mb-16 grid gap-4 scroll-mt-8 md:grid-cols-3">

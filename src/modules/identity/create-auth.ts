@@ -21,7 +21,7 @@ type AuthConfiguration = {
   testMode?: boolean;
 };
 
-/** M1 feasibility boundary. Public handlers and business authorization are added in M2/M4. */
+/** Separate auth boundaries; staff login is mounted in M2.2, patient login remains M4. */
 export function createIdentity({ db, baseURL, patientSecret, staffSecret, mailer, testMode = false }: AuthConfiguration) {
   if (patientSecret === staffSecret || Math.min(patientSecret.length, staffSecret.length) < 32) {
     throw new Error("Distinct patient and staff authentication secrets of at least 32 characters are required.");
@@ -40,7 +40,7 @@ export function createIdentity({ db, baseURL, patientSecret, staffSecret, mailer
     telemetry: { enabled: false },
     logger: { disabled: true },
     session: { expiresIn: 60 * 60 * 12, cookieCache: { enabled: false } },
-    // M2 adds shared database-backed abuse policies before public handlers are mounted.
+    // Existing per-process limits; shared database-backed abuse policies are M6 work.
     rateLimit: { enabled: true, window: 60, max: 10 },
   } satisfies BetterAuthOptions;
 
