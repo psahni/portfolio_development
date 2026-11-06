@@ -30,6 +30,8 @@ A runnable Next.js foundation with PostgreSQL/Drizzle migrations and a tested au
 
 ## Verification record
 
+For repeatable browser, terminal and optional database/bootstrap checks, use [Testing the M1 foundation](../TESTING.md). The home page is a preview; login and booking interfaces are not part of this milestone.
+
 Verified locally on Node.js 26.13.0 with pnpm 12.18.0 and real PostgreSQL 17.11:
 
 | Criteria | Evidence | Result |

@@ -4,6 +4,8 @@ Native booking for one clinic, one branch and one doctor. Approach 1 is being bu
 
 **Current delivery: M1 foundation.** The Next.js shell, Drizzle auth migrations and patient/staff authentication feasibility tests are implemented. The auth revision adds code-only staff login, admin PIN services and explicit admin bootstrap. Patient booking, admin forms, staff-management screens and live integrations are later milestones. Authentication handlers are intentionally not mounted publicly yet.
 
+**Testing now:** Follow the [M1 testing steps](docs/TESTING.md). The home page is a preview with an informational scroll link; working login/booking calls to action arrive with their respective milestones. Automated checks cover the current auth backend.
+
 ## Run locally
 
 Use Node.js 24 LTS (`.nvmrc`) or Node.js 26 and pnpm 12.18.0. Dependencies are pinned in `pnpm-lock.yaml`.
