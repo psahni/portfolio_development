@@ -2,7 +2,7 @@
 
 **Status: Approach 1 approved. Spec-driven implementation starts with [M1](specs/M1_FOUNDATION.md).**
 
-**Progress:** M1 and the [code/PIN auth revision](specs/AUTH_CODE_REVISION.md) pass 28 tests, typecheck, lint and production build. The revision supersedes password login. Browser visual QA and M2 login forms remain pending.
+**Progress:** M1 and the [code/PIN auth revision](specs/AUTH_CODE_REVISION.md) pass 29 tests, typecheck, lint and production build. The revision supersedes password login. Browser visual QA and M2 login forms remain pending.
 
 Scope: **one clinic, one branch and one doctor**. Multiple clinics/branches are deferred.
 
@@ -10,9 +10,9 @@ The MVP includes native patient booking and an admin/staff interface. PostgreSQL
 
 ## Login requirements
 
-- **Shared admin/staff screen:** `/admin/login` has **Email** and **PIN or code** fields, plus **Send code** and **Sign in** buttons. Admin enters the PIN directly; staff request an email code and enter it in the same field.
+- **Shared login page:** `/admin` for both admin and staff. Admin enters email + PIN; staff enter email + requested email code and can never use PIN login. The requested three-field layout is awaiting clarification of the field labels.
 - **Patient:** Enter email, receive a one-time code and sign in to access only their own bookings.
-- **Doctor/admin:** Bootstrap creates the initial admin with an email and four-digit PIN. Sign in through `/admin/login` using that PIN; no emailed login code. The admin can change the PIN later.
+- **Doctor/admin:** Bootstrap creates the initial admin with an email and four-digit PIN. Sign in through `/admin` using that PIN; no emailed login code. The admin can change the PIN later.
 - **Staff:** The admin adds the account and permissions. Staff sign in through the admin interface using a one-time code sent by email.
 - **Access:** No password login. Keep patient/admin sessions separate, hash PINs and limit attempts. PIN reset requires the admin session and current PIN. SMS login and two-factor setup are deferred.
 - **Testing:** `0000` works only with explicit localhost test mode and existing active accounts. Email-code login still requires requesting a code. It is rejected in production and cannot reset PINs.
@@ -24,7 +24,7 @@ All three approaches below use these login requirements.
 Build in small stages and review each working stage with the clinic.
 
 1. **Foundation (M1):** Set up Next.js, TypeScript, Tailwind, shadcn/ui and PostgreSQL with Drizzle. Validate authentication and database compatibility.
-2. **Admin and staff login (M2):** Add one shared email + PIN/code form, the PIN-change screen and admin-managed staff access. Bootstrap creates only the initial admin.
+2. **Admin and staff login (M2):** Add the shared `/admin` login form, the PIN-change screen and admin-managed staff access. Bootstrap creates only the initial admin.
 3. **Doctor and staff booking (M3):** Add the doctor's agenda, availability, receptionist booking and rescheduling. Let the doctor cancel a booking, block that time if unavailable and suggest another time or ask the patient to rebook.
 4. **Patient booking (M4):** Add patient email-code sign-in, the hosted booking page, website button, duplicate-submit protection and instant confirmation.
 5. **Integrations (M5):** Add optional Google Calendar sync and automatic cancellation emails with suggestions/rebooking links. Validate WhatsApp confirmations/reminders before enabling automation; retain manual links for follow-up.

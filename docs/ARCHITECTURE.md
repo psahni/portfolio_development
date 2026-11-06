@@ -15,10 +15,10 @@ Multiple clinics/branches/doctors, tenant infrastructure, payments and clinical 
 | User | Login | Access |
 | --- | --- | --- |
 | Patient | Email + one-time code at `/login` | Book appointments and view only their own linked bookings. |
-| Doctor/admin | Bootstrap email + four-digit PIN at `/admin/login` | Manage appointments, availability, staff, settings and integrations. |
-| Staff | Email + one-time code at `/admin/login` | Manage appointments within permissions assigned by the doctor. |
+| Doctor/admin | Bootstrap email + four-digit PIN at `/admin` | Manage appointments, availability, staff, settings and integrations. |
+| Staff | Email + one-time code at `/admin` | Manage appointments within permissions assigned by the doctor. |
 
-Admin and staff share one screen with **Email**, **PIN or code**, **Send code** and **Sign in**. The admin enters the PIN directly; staff request an emailed code and enter it in the same credential field. Server-side account checks determine the permitted login method. Do not infer role from credential length: the local staff test code and admin PIN are both four digits. This shared screen is planned for M2.
+Admin and staff share the `/admin` login page. The admin enters email + PIN; staff must request an emailed code and can never use PIN login, including in test mode. The user requested three fields; field labels/layout are awaiting clarification before M2 UI implementation. Server-side account checks determine the permitted login method; credential length never determines role because the local staff test code and admin PIN are both four digits.
 
 The doctor is the admin. An explicit, idempotent bootstrap creates only the initial admin using an operator-configured email and four-digit PIN. No PIN is hardcoded. The admin adds staff, who receive email login codes; no passwords are used. Admin PIN changes require a staff-scoped admin session and current PIN, and revoke that admin's existing sessions. Forgotten-PIN recovery is later M2 work.
 

@@ -37,7 +37,7 @@ Verified locally on Node.js 26.13.0 with pnpm 12.18.0 and real PostgreSQL 17.11:
 | F1 | `pnpm typecheck`, `pnpm lint`, `pnpm build` (webpack); localhost HTTP 200, title/content and security headers. | Functional checks passed. Visual browser check pending. |
 | F2, F6 | `pnpm test`: 12 environment/mail tests, including redacted errors and unconfigured mail failure. Build succeeds without auth/database secrets. | Passed. |
 | F3 | `pnpm test:integration`; migration CLI applied to localhost development DB; repeat migration and rollback tested. `pnpm db:generate --name=verify_drift` reports no changes. | Passed. |
-| F4, F5 | 16 integration tests using disposable PostgreSQL: bootstrap CLI, additive migration upgrade, same-email isolation, approved-staff codes, admin PIN/reset/lockout, rejected password routes, OTP expiry/replay and local test-code boundaries. | Passed. |
+| F4, F5 | 17 integration tests using disposable PostgreSQL: bootstrap CLI, additive migration upgrade, same-email isolation, approved-staff codes, admin PIN/reset/lockout, rejected password routes, OTP expiry/replay and local test-code boundaries. | Passed. |
 | F7 | `pnpm install --frozen-lockfile`, exact pins, README/local PostgreSQL startup, CI definition. | Local install/checks passed; remote CI not run. |
 
 `pnpm audit --prod --audit-level=high` reported no known vulnerabilities at verification time. This is an advisory check, not a security certification.

@@ -8,7 +8,7 @@ import { beforeAll, afterAll, describe, expect, inject, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { createDatabase } from "@/db/connection";
-import { patientUser, patientVerification, staffUser, staffAccess } from "@/db/schema/auth";
+import { patientUser, patientVerification, staffUser, staffAccess, staffSession } from "@/db/schema/auth";
 import { createIdentity } from "@/modules/identity/create-auth";
 import { bootstrapAdmin } from "@/modules/identity/admin-pin";
 import type { LoginCode } from "@/platform/mail";
@@ -184,6 +184,20 @@ describe("email-code authentication", () => {
 });
 
 describe("admin PIN", () => {
+  it("never permits staff PIN login, even with a known admin PIN, test code or spoofed role", async () => {
+    const [user] = await database.db.select().from(staffUser).where(eq(staffUser.email, staffEmail));
+    const before = await database.db.select().from(staffSession).where(eq(staffSession.userId, user.id));
+    for (const auth of [identity, makeIdentity(true)]) {
+      for (const pin of [initialPin, "0000"]) {
+        const response = await auth.staff.handler(new Request(`${baseURL}/api/auth/staff/sign-in/admin-pin`, {
+          method: "POST", headers: { "content-type": "application/json", origin: baseURL },
+          body: JSON.stringify({ email: staffEmail, pin, role: "admin" }),
+        }));
+        expect(response.status).toBeGreaterThanOrEqual(400);
+      }
+    }
+    expect(await database.db.select().from(staffSession).where(eq(staffSession.userId, user.id))).toHaveLength(before.length);
+  });
   it("creates an admin session with the real PIN and rejects test code by default", async () => {
     expect((await adminLogin("0000")).status).toBeGreaterThanOrEqual(400);
     const response = await adminLogin();

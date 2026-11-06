@@ -45,7 +45,7 @@ pnpm db:bootstrap-admin
 
 This creates only the admin. Re-running it preserves the existing PIN and does not create staff or patients. No real admin is created until you supply these settings. The server-side PIN-change service requires the current PIN plus an admin session and signs that admin out everywhere after a change; its screen is M2 work. Forgotten-PIN recovery is also M2 work. Keep the staff auth secret stable: it protects PIN hashes, so rotating it needs a controlled PIN reset.
 
-For localhost testing, explicitly set `AUTH_TEST_MODE=true`. An existing admin can use `0000` instead of their PIN; existing patient/staff accounts can request a login code and enter `0000` without sending email. Staff must already be approved and active. Unknown accounts, disabled accounts, locked PINs and code replay are rejected. Test mode cannot reset a PIN and is rejected in production or on non-loopback origins. Public login handlers/forms are still not mounted in this foundation slice.
+For localhost testing, explicitly set `AUTH_TEST_MODE=true`. An existing admin can use `0000` instead of their PIN; existing patient/staff accounts can request a login code and enter `0000` without sending email. Staff must already be approved and active. Staff can never use the PIN endpoint, including with `0000`; they must request an email login code and use the code-verification flow. Unknown accounts, disabled accounts, locked PINs and code replay are rejected. Test mode cannot reset a PIN and is rejected in production or on non-loopback origins. Public login handlers/forms are still not mounted in this foundation slice.
 
 ## Checks
 
