@@ -1,4 +1,5 @@
-import { boolean, pgSchema, text, timestamp, type PgSchema } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, integer, pgSchema, pgTable, text, timestamp, uniqueIndex, type PgSchema } from "drizzle-orm/pg-core";
 
 export const patientAuthSchema = pgSchema("patient_auth");
 export const staffAuthSchema = pgSchema("staff_auth");
@@ -61,3 +62,18 @@ export const staffUser = staffAuthTables.user;
 export const staffSession = staffAuthTables.session;
 export const staffAccount = staffAuthTables.account;
 export const staffVerification = staffAuthTables.verification;
+
+export const staffAccess = pgTable("staff_access", {
+  userId: text("user_id").primaryKey().references(() => staffUser.id, { onDelete: "cascade" }),
+  role: text("role").$type<"admin" | "staff">().notNull(),
+  active: boolean("active").notNull().default(true),
+  adminPinHash: text("admin_pin_hash"),
+  failedPinAttempts: integer("failed_pin_attempts").notNull().default(0),
+  pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  check("staff_access_role", sql`${table.role} in ('admin', 'staff')`),
+  check("staff_access_pin_owner", sql`(${table.role} = 'admin' and ${table.adminPinHash} is not null) or (${table.role} = 'staff' and ${table.adminPinHash} is null)`),
+  check("staff_access_pin_attempts", sql`${table.failedPinAttempts} >= 0`),
+  uniqueIndex("staff_access_one_admin").on(table.role).where(sql`${table.role} = 'admin'`),
+]);

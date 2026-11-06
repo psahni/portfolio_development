@@ -11,7 +11,7 @@ export function getIdentity() {
   if (!identity) {
     const env = readAuthEnvironment();
     const { db } = createDatabase(env.DATABASE_URL);
-    identity = createIdentity({ db, baseURL: env.APP_URL, patientSecret: env.PATIENT_AUTH_SECRET, staffSecret: env.STAFF_AUTH_SECRET, mailer: unconfiguredMailer });
+    identity = createIdentity({ db, baseURL: env.APP_URL, patientSecret: env.PATIENT_AUTH_SECRET, staffSecret: env.STAFF_AUTH_SECRET, mailer: unconfiguredMailer, testMode: env.AUTH_TEST_MODE });
   }
   return identity;
 }

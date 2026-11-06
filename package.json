@@ -18,6 +18,7 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
+    "db:bootstrap-admin": "node --conditions=react-server --import tsx scripts/bootstrap-admin.ts",
     "db:local": "tsx scripts/local-postgres.ts"
   },
   "dependencies": {

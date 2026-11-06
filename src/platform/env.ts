@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { resolveTestAuthMode } from "../modules/identity/test-mode";
 
 function parsedUrl(value: string) {
   try { return new URL(value); }
@@ -13,12 +14,17 @@ const authEnvironment = z.object({
   DATABASE_URL: z.string().url().refine((value) => ["postgres:", "postgresql:"].includes(parsedUrl(value)?.protocol ?? "")),
   PATIENT_AUTH_SECRET: z.string().min(32),
   STAFF_AUTH_SECRET: z.string().min(32),
+  AUTH_TEST_MODE: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 }).superRefine((value, ctx) => {
   if (value.PATIENT_AUTH_SECRET === value.STAFF_AUTH_SECRET) {
     ctx.addIssue({ code: "custom", path: ["STAFF_AUTH_SECRET"], message: "Use a distinct secret" });
   }
   if (process.env.NODE_ENV === "production" && !value.APP_URL.startsWith("https://")) {
     ctx.addIssue({ code: "custom", path: ["APP_URL"], message: "HTTPS required" });
+  }
+  if (value.AUTH_TEST_MODE) {
+    try { resolveTestAuthMode(true, value.APP_URL); }
+    catch { ctx.addIssue({ code: "custom", path: ["AUTH_TEST_MODE"], message: "Local development/test only" }); }
   }
 });
 

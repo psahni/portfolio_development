@@ -15,16 +15,18 @@ Multiple clinics/branches/doctors, tenant infrastructure, payments and clinical 
 | User | Login | Access |
 | --- | --- | --- |
 | Patient | Email + one-time code at `/login` | Book appointments and view only their own linked bookings. |
-| Doctor/admin | Email + password at `/admin/login` | Manage appointments, availability, staff, settings and integrations. |
-| Staff | Email + password at `/admin/login` | Manage appointments within permissions assigned by the doctor. |
+| Doctor/admin | Bootstrap email + four-digit PIN at `/admin/login` | Manage appointments, availability, staff, settings and integrations. |
+| Staff | Email + one-time code at `/admin/login` | Manage appointments within permissions assigned by the doctor. |
 
-The doctor is the admin. Initial admin access is configured during setup. The doctor adds staff and emails an expiring temporary password; staff must change it before accessing patient data. Resending credentials invalidates the previous temporary password. Store secure password hashes, never readable passwords; keep credentials out of logs. Use expiring reset links for later password recovery.
+The doctor is the admin. An explicit, idempotent bootstrap creates only the initial admin using an operator-configured email and four-digit PIN. No PIN is hardcoded. The admin adds staff, who receive email login codes; no passwords are used. Admin PIN changes require a staff-scoped admin session and current PIN, and revoke that admin's existing sessions. Forgotten-PIN recovery is later M2 work.
 
-Use Better Auth with its Drizzle adapter, [email OTP](https://better-auth.com/docs/plugins/email-otp) for patients and [email/password authentication](https://better-auth.com/docs/authentication/email-password) for doctor/staff. Validate compatibility and separate patient/admin session boundaries in M1. Patient registration must never create staff access, and a patient-code session must not open the admin interface, even for an email also used by staff. Only the admin creates staff accounts; there is no public staff signup.
+Use Better Auth with its Drizzle adapter and [email OTP](https://better-auth.com/docs/plugins/email-otp) for patients/approved staff. A small admin-PIN plugin uses library sessions and a separate protected PIN hash. Staff OTP login checks active staff access and rejects admin accounts; the admin uses PIN login instead. Patient registration must never create staff access, and patient sessions cannot open the admin interface, even for the same email. Only the admin creates staff accounts.
 
-Codes are expiring and single-use. Limit code sends, password attempts and resets; use secure cookies, server-side role checks and session revocation. SMS login and two-factor setup are deferred.
+Email codes are expiring and single-use. Protect PIN hashes using the server secret and a slow salted hash. Five failed PIN attempts lock the account for 15 minutes using serialized database counters. Use request limits, secure cookies and server-side access checks. SMS login and two-factor setup are deferred.
 
-M1 isolates patient and staff identities in separate PostgreSQL auth schemas, endpoint paths and cookie prefixes. This boundary is tested; public auth handlers, shared abuse policies, role enforcement and temporary-password activation are M2/M4 work. See [M1 specification](specs/M1_FOUNDATION.md).
+For local testing only, `AUTH_TEST_MODE=true` enables `0000` for existing active accounts. Email-code users must still request a fresh code; no email is sent in this mode. Admin test login uses `0000` instead of the PIN. Production/non-loopback origins reject test mode. It cannot create users, reset PINs or bypass disabled accounts/lockout.
+
+M1 isolates patient and staff identities in separate PostgreSQL auth schemas, endpoint paths and cookies. The [auth revision](specs/AUTH_CODE_REVISION.md) adds bootstrap, staff approval and admin PIN/reset services. Public forms/handlers, shared request-abuse controls and full staff management remain M2/M4 work.
 
 ## Booking and cancellation
 
@@ -42,7 +44,7 @@ Statuses: `confirmed`, `cancelled`, `completed`, `no_show`. Notification failure
 
 ## Integrations
 
-- **Email bot:** Sends patient login codes, staff setup/reset emails and automatic cancellation/rebooking notices through a provider adapter. Deduplicate cancellation notices and show failures to staff. Provider acceptance alone is not proof of delivery.
+- **Email bot:** Sends patient login codes, staff login emails and automatic cancellation/rebooking notices through a provider adapter. Deduplicate cancellation notices and show failures to staff. Provider acceptance alone is not proof of delivery.
 - **Google Calendar:** Optional outbound create/update/cancel sync to one clinic calendar. The native database remains authoritative during outages. Google events do not block slots, and Google edits do not change native bookings. Encrypt credentials and omit patient contacts from mirrored event details.
 - **WhatsApp:** Retain the newer repository requirement to evaluate confirmations and reminders. Validate provider, authorized recipient and messaging permission before enabling automation. Use native booking events, suppress stale reminders after cancellation/rescheduling and prevent duplicate sends. Manual links remain a follow-up option, not proof of delivery.
 
@@ -52,7 +54,7 @@ Save jobs with booking changes; process provider calls after commit with recover
 
 Collect minimal patient name, email, phone and booking details. Encrypt contact data and provider credentials. Restrict patient queries to authenticated account ownership; never expose bookings through a phone or reference lookup. Use server validation, forged-request protection, rate limits, private-response cache controls and redacted logs.
 
-Review Drizzle migrations; use restricted runtime and separate migration credentials. Test real PostgreSQL overlap/transaction behavior, both login flows, patient/admin separation, staff password activation/reset, cancellation notices and provider failures. Verify backups and encryption-key restoration.
+Review Drizzle migrations; use restricted runtime and separate migration credentials. Test real PostgreSQL overlap/transaction behavior, email-code/PIN flows, patient/admin separation, PIN lockout/reset, production test-mode rejection, cancellation notices and provider failures. Verify backups and encryption-key restoration.
 
 Before real-patient launch, agree on privacy notices, retention, hosting region, providers and support ownership. Known risks include unverified patient phone numbers, lost email access, provider failures and Calendar drift. Proposed defaults remain 20-minute appointments, zero buffers, 60-minute lead time and a 30-day horizon, with clinic timezone selected during setup.
 

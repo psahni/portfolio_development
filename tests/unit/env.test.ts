@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { readAuthEnvironment, readMigrationUrl } from "@/platform/env";
 import { unconfiguredMailer } from "@/platform/mail";
+import { resolveTestAuthMode } from "@/modules/identity/test-mode";
 
 const valid = {
   APP_URL: "http://localhost:3000",
@@ -11,7 +12,7 @@ const valid = {
 
 describe("server configuration", () => {
   it("accepts distinct secrets and PostgreSQL configuration", () => {
-    expect(readAuthEnvironment(valid)).toEqual(valid);
+    expect(readAuthEnvironment(valid)).toEqual({ ...valid, AUTH_TEST_MODE: false });
   });
   it("reports missing field names without printing input values", () => {
     expect(() => readAuthEnvironment({ ...valid, DATABASE_URL: "secret-database-value", STAFF_AUTH_SECRET: "private-short-secret" })).toThrow("DATABASE_URL, STAFF_AUTH_SECRET");
@@ -34,5 +35,19 @@ describe("server configuration", () => {
   });
   it("fails closed when email delivery is not configured", async () => {
     await expect(unconfiguredMailer.sendPatientLoginCode({ email: "synthetic@example.test", code: "123456" })).rejects.toThrow("not configured");
+    await expect(unconfiguredMailer.sendStaffLoginCode({ email: "staff@example.test", code: "123456" })).rejects.toThrow("not configured");
+  });
+  it("requires an explicit test flag and loopback origin", () => {
+    expect(readAuthEnvironment({ ...valid, AUTH_TEST_MODE: "true" }).AUTH_TEST_MODE).toBe(true);
+    expect(() => readAuthEnvironment({ ...valid, APP_URL: "https://clinic.example.test", AUTH_TEST_MODE: "true" })).toThrow("AUTH_TEST_MODE");
+    expect(() => readAuthEnvironment({ ...valid, AUTH_TEST_MODE: "yes" })).toThrow("AUTH_TEST_MODE");
+    expect(resolveTestAuthMode(false, "https://clinic.example.test")).toBe(false);
+  });
+  it("rejects test authentication in production even with a localhost origin", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      expect(() => readAuthEnvironment({ ...valid, APP_URL: "https://localhost", AUTH_TEST_MODE: "true" })).toThrow("AUTH_TEST_MODE");
+      expect(() => resolveTestAuthMode(true, "https://localhost")).toThrow("only for local");
+    } finally { vi.unstubAllEnvs(); }
   });
 });

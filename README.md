@@ -2,7 +2,7 @@
 
 Native booking for one clinic, one branch and one doctor. Approach 1 is being built through short specifications and verified milestones.
 
-**Current delivery: M1 foundation.** The Next.js shell, Drizzle auth migrations and patient/staff authentication feasibility tests are implemented. Patient booking, admin forms, staff provisioning, password activation and live integrations are later milestones. Authentication handlers are intentionally not mounted publicly yet.
+**Current delivery: M1 foundation.** The Next.js shell, Drizzle auth migrations and patient/staff authentication feasibility tests are implemented. The auth revision adds code-only staff login, admin PIN services and explicit admin bootstrap. Patient booking, admin forms, staff-management screens and live integrations are later milestones. Authentication handlers are intentionally not mounted publicly yet.
 
 ## Run locally
 
@@ -35,6 +35,18 @@ pnpm db:migrate
 
 The example database credentials are for loopback development only. Deployments require separate restricted runtime and migration roles. Never commit `.env.local` or reuse example credentials in production. Migration generation (`pnpm db:generate`) needs no live database. Migrations are applied explicitly, never at app startup.
 
+## Admin bootstrap and local test login
+
+After migration, set `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_NAME` and `BOOTSTRAP_ADMIN_PIN` in ignored `.env.local`. Choose a four-digit PIN other than reserved test code `0000`, then run:
+
+```sh
+pnpm db:bootstrap-admin
+```
+
+This creates only the admin. Re-running it preserves the existing PIN and does not create staff or patients. No real admin is created until you supply these settings. The server-side PIN-change service requires the current PIN plus an admin session and signs that admin out everywhere after a change; its screen is M2 work. Forgotten-PIN recovery is also M2 work. Keep the staff auth secret stable: it protects PIN hashes, so rotating it needs a controlled PIN reset.
+
+For localhost testing, explicitly set `AUTH_TEST_MODE=true`. An existing admin can use `0000` instead of their PIN; existing patient/staff accounts can request a login code and enter `0000` without sending email. Staff must already be approved and active. Unknown accounts, disabled accounts, locked PINs and code replay are rejected. Test mode cannot reset a PIN and is rejected in production or on non-loopback origins. Public login handlers/forms are still not mounted in this foundation slice.
+
 ## Checks
 
 ```sh
@@ -44,7 +56,7 @@ pnpm build               # production build, no DB/auth credentials needed
 pnpm start               # serve the production build
 ```
 
-Integration tests never connect to an existing development/production database. They generate a random password and local port, replay migrations, and check transactions plus patient-code/staff-password authentication in both directions. Test login codes are captured only in memory; no email is sent. Platform/database logs and credentials are not echoed. A configured email provider and shared abuse limits are required before public auth handlers are added.
+Integration tests never connect to an existing development/production database. They generate a random password and local port, replay migrations, and check transactions plus isolated patient/staff email codes, admin PIN bootstrap/reset/lockout and test-mode restrictions. Test login codes are captured only in memory; no email is sent. Platform/database logs and credentials are not echoed. A configured email provider and shared abuse limits are required before public auth handlers are added.
 
 CI is configured for GitHub Actions and runs on pushes and pull requests. Check the review branch's Actions results for remote verification. Local test and build evidence is recorded in [M1](docs/specs/M1_FOUNDATION.md). Browser visual QA remains unverified where computer/browser automation is unavailable.
 
