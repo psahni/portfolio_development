@@ -19,7 +19,7 @@ M1 is implemented and functionally checked; see its evidence and pending browser
 - Retain WhatsApp confirmation/reminder feasibility work from the newer repository proposal. Validate provider, recipient and messaging permission before automation; manual links cannot prove delivery.
 
 ## Engineering guardrails
-
+- Keep documentation minimal. Put important changed files, their purpose and logic needing review in each PR description. Use focused code comments for non-obvious logic. Reuse existing specs; do not create more documentation files unless requested.
 - Public/patient and receptionist paths share scheduling rules. Lock the doctor row, enforce database non-overlap and commit booking/reservation/audit/duplicate-request results and integration jobs together. Confirm only after commit; make reschedules atomic.
 - Keep provider calls outside transactions. Use recoverable jobs, bounded retries, duplicate-send protection and reconciliation. A messaging failure must not undo a cancellation.
 - Keep patient data minimal, encrypted where appropriate, credentials server-side and diagnostics redacted. Enforce input validation, forged-request protection, abuse limits and private-response cache controls.
