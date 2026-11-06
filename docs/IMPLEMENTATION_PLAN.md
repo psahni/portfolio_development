@@ -10,6 +10,7 @@ The MVP includes native patient booking and an admin/staff interface. PostgreSQL
 
 ## Login requirements
 
+- **Shared admin/staff screen:** `/admin/login` has **Email** and **PIN or code** fields, plus **Send code** and **Sign in** buttons. Admin enters the PIN directly; staff request an email code and enter it in the same field.
 - **Patient:** Enter email, receive a one-time code and sign in to access only their own bookings.
 - **Doctor/admin:** Bootstrap creates the initial admin with an email and four-digit PIN. Sign in through `/admin/login` using that PIN; no emailed login code. The admin can change the PIN later.
 - **Staff:** The admin adds the account and permissions. Staff sign in through the admin interface using a one-time code sent by email.
@@ -23,7 +24,7 @@ All three approaches below use these login requirements.
 Build in small stages and review each working stage with the clinic.
 
 1. **Foundation (M1):** Set up Next.js, TypeScript, Tailwind, shadcn/ui and PostgreSQL with Drizzle. Validate authentication and database compatibility.
-2. **Admin and staff login (M2):** Add the admin PIN and staff email-code forms, PIN-change screen and admin-managed staff access. Bootstrap creates only the initial admin.
+2. **Admin and staff login (M2):** Add one shared email + PIN/code form, the PIN-change screen and admin-managed staff access. Bootstrap creates only the initial admin.
 3. **Doctor and staff booking (M3):** Add the doctor's agenda, availability, receptionist booking and rescheduling. Let the doctor cancel a booking, block that time if unavailable and suggest another time or ask the patient to rebook.
 4. **Patient booking (M4):** Add patient email-code sign-in, the hosted booking page, website button, duplicate-submit protection and instant confirmation.
 5. **Integrations (M5):** Add optional Google Calendar sync and automatic cancellation emails with suggestions/rebooking links. Validate WhatsApp confirmations/reminders before enabling automation; retain manual links for follow-up.

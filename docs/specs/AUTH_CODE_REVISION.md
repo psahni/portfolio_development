@@ -29,6 +29,13 @@ Keep Better Auth session/cookie handling and separate patient/staff stores. Add 
 
 Four-digit PINs have limited entropy, so PIN hashing, persistent lockout and request throttling are required. Staff auth secret rotation requires a controlled PIN reset because that secret protects the stored PIN material.
 
+## Shared login screen — M2, planned
+
+- One `/admin/login` screen for both admin and staff: **Email** and **PIN or code** inputs, with **Send code** and **Sign in** buttons.
+- Admin enters the PIN directly. Staff first request an email code and then enter it in the same field.
+- Resolve the allowed method through server-side account checks; credential length never determines role or privileges. Verify that local staff code `0000` still uses the requested-code flow.
+- This is the UI contract for M2; the screen is not implemented or verified in this foundation revision.
+
 ## Verification
 
 - `pnpm test`: **12 passing unit tests**, including default-off test mode and rejection in production/non-loopback origins.
