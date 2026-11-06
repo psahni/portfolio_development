@@ -1,0 +1,13 @@
+# Nuvortiq Smart Booking — Google Calendar MVP
+
+**Status: superseded historical alternative.** The user has confirmed a native MVP with patient/admin login. Use the active [implementation plan](IMPLEMENTATION_PLAN.md), [architecture](ARCHITECTURE.md) and [database design](DATABASE.md). The Google-hosted approach below is retained for reference and does not authorize a walkthrough, integration or deployment.
+
+Build a repeatable appointment booking integration for single-doctor clinic websites and a portfolio demo. Nuvortiq charges for setup and ongoing maintenance. Phase 2 adds a native appointment calendar and reusable embeddable booking UI. A standalone booking SaaS is outside the initial scope.
+
+1. **Validate the booking flow.** After approval, use a dedicated test Google account or calendar. Configure a test doctor's hours, timezone and appointment length. Share its booking URL and open it from a phone as a visitor. Book using synthetic details, check immediate confirmation and the calendar event, then verify the slot is no longer bookable. Cancel the booking and check availability again.
+2. **Validate WhatsApp feasibility before choosing a stack.** Inspect what an authorized Calendar event read actually exposes for bookings, changes and cancellations. Confirm a reliable way to identify eligible appointments and associate a recipient number and messaging permission. Select a WhatsApp Business integration only after testing this path. If Google does not expose enough data, evaluate a separate consent and verified booking-matching step before committing to automation.
+3. **Build the smallest website integration.** Put a configurable Google booking URL behind a **Book Appointment** button on the portfolio demo. Document how to install the button and reuse the same URL for WhatsApp and email sharing. Keep the site free of scheduling and patient-record logic.
+4. **Complete WhatsApp confirmations and reminders.** Test using an authorized recipient and the chosen provider's approved templates and permissions. Verify one confirmation per booking, the reminder at the configured time, no duplicate messages on retry, and suppression of stale reminders after cancellations or time changes. Surface send failures for clinic follow-up.
+5. **Package for handoff.** Document account ownership, configuration, test steps, support responsibilities and maintenance. Resolve patient data handling, retention and provider/account requirements before real bookings.
+
+**Historical next step (superseded):** a test-only Google Calendar booking walkthrough in step 1. Later integration decisions depend on observed results. See [architecture](ARCHITECTURE.md) and [data guidance](DATABASE.md).
