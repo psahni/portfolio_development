@@ -5,7 +5,7 @@ config({ path: ".env.local", quiet: true });
 // Generating SQL requires no live credentials. Applying SQL uses scripts/migrate.ts.
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./src/db/schema/auth.ts",
+  schema: "./src/db/schema/*.ts",
   out: "./drizzle",
   strict: true,
   verbose: false,

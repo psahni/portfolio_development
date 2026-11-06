@@ -1,6 +1,6 @@
 # Nuvortiq Smart Booking — Implementation Options
 
-**Status: Approach 1 approved. Spec-driven implementation starts with [M1](specs/M1_FOUNDATION.md).**
+**Status: patient-booking-first priority selected. Next: clinic settings [#6](https://github.com/psahni/portfolio_development/issues/6), availability, shared booking service, patient booking and the doctor's appointment list. Staff management follows the basic MVP. Use GitHub issues as task specs.**
 
 **Progress:** ✅ M1 foundation, M2.1 access checks and M2.2 shared clinic login are implemented. The [auth revision](specs/AUTH_CODE_REVISION.md) records the flow and checks. Staff management, PIN-change screens and real email delivery remain pending.
 
@@ -21,7 +21,7 @@ The MVP includes native patient booking and an admin/staff interface. PostgreSQL
 
 All three approaches below use these login requirements.
 
-## Approach 1 — Staff workflow first (Recommended)
+## Approach 1 — Staff workflow first (alternative)
 
 Build in small stages and review each working stage with the clinic.
 
@@ -36,15 +36,15 @@ Build in small stages and review each working stage with the clinic.
 - **Benefit:** Staff can review scheduling rules before patients use them.
 - **Tradeoff:** The patient-facing demo comes later.
 
-## Approach 2 — Patient booking first
+## Approach 2 — Patient booking first (Selected)
 
 Prioritize demonstrating the patient journey after completing the same foundation and security work.
 
-1. Complete M1–M2, including admin PIN login, staff email-code login and permissions.
-2. Build availability, the shared booking service and the patient page using synthetic clinic data.
-3. Demonstrate patient email-code login, slot selection, contact entry and instant confirmation.
-4. Add the receptionist agenda, availability management, cancellation and rescheduling.
-5. Add integrations and complete the same launch checks as Approach 1.
+1. Keep the completed foundation, login and access checks. Configure clinic/doctor settings and weekly hours in #6; defer staff management and PIN-change screens.
+2. Build available slots and the shared booking service, without requiring a receptionist interface first.
+3. Add patient email-code login, slot selection, contact entry and confirmation; connect email before real-patient use.
+4. Add the doctor's appointment list and basic cancellation to complete the basic MVP.
+5. Add staff workflows, integrations and deferred hardening/launch checks afterwards.
 
 - **Best for:** Reviewing the booking experience with clinic owners early.
 - **Benefit:** The hosted link and website button are demonstrated sooner.
@@ -88,6 +88,6 @@ The doctor uses the admin account. Collect patient email when booking. The bot r
 
 Use synthetic patients for development and demonstrations. Resolve hosting region, privacy notices, data retention, recovery procedures and provider choices before real-patient launch. Patient phone numbers remain unverified; patients/staff verify email codes, while the admin uses a PIN.
 
-**Delivery process:** Write a short milestone spec first, implement its acceptance criteria, verify them and record results. Review the working milestone before expanding scope. Approach 1 is selected; Approaches 2 and 3 remain alternatives for reference.
+**Delivery process:** Define acceptance criteria in the GitHub issue, implement one task, verify it and record results in its PR. Review before expanding scope. The patient-booking-first sequence above is selected; other approaches remain references.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) and [DATABASE.md](DATABASE.md) for the native MVP design. The Google-hosted draft and archived proposals are historical.

@@ -1,6 +1,8 @@
 # Nuvortiq Smart Booking — Repository Guidance
 
-**Current phase: Approach 1 implementation approved.** Follow spec-driven development: write concise acceptance criteria before each milestone's code, implement against them, run the relevant checks and record evidence. Start with [M1](docs/specs/M1_FOUNDATION.md). Local scaffolding, dependencies, code, migrations and synthetic tests are authorized. External account setup, real-user messages, paid provisioning and deployment still require appropriate authorization.
+**Current phase: patient-booking-first implementation approved.** Follow spec-driven development: define concise acceptance criteria in the GitHub issue before code, implement against them, run relevant checks and record evidence in the PR. [M1](docs/specs/M1_FOUNDATION.md) records the completed foundation. Local scaffolding, dependencies, code, migrations and synthetic tests are authorized. External account setup, real-user messages, paid provisioning and deployment still require appropriate authorization.
+
+**Current priority: patient booking first.** Issue [#6](https://github.com/psahni/portfolio_development/issues/6) defines clinic settings/weekly hours, followed by availability, the shared booking service, patient booking and the doctor's appointment list. Staff management and PIN-change screens follow that basic MVP. Use GitHub issue acceptance criteria as the task spec; put file purposes and verification in the PR.
 
 Read [implementation plan](docs/IMPLEMENTATION_PLAN.md), [architecture](docs/ARCHITECTURE.md) and [database design](docs/DATABASE.md). These active documents govern work. The Google-hosted draft and archived native proposals are historical and must not override current decisions. Do not delegate unless explicitly requested.
 

@@ -6,6 +6,8 @@ Native booking for one clinic, one branch and one doctor. Approach 1 is being bu
 
 **Testing now:** Follow the [testing steps](docs/TESTING.md). The home page links to clinic sign-in; booking remains pending.
 
+**Clinic setup (#6):** After migration, sign in as admin and open **Clinic settings** in the workspace. Save clinic/doctor details, select a timezone, set appointment rules and add weekly opening intervals. Closed days have no intervals; settings persist across restarts.
+
 ## Run locally
 
 Use Node.js 24 LTS (`.nvmrc`) or Node.js 26 and pnpm 12.18.0. Dependencies are pinned in `pnpm-lock.yaml`.

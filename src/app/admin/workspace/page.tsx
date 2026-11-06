@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { isAPIError } from "better-auth/api";
 import { getIdentity } from "@/modules/identity/server";
 import { SignOutButton } from "../sign-out-button";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +22,8 @@ export default async function Workspace() {
       <section className="py-16">
         <p className="mb-4 text-sm font-medium text-primary">{principal.role === "admin" ? "Doctor / Admin" : "Staff"}</p>
         <h1 className="text-3xl font-medium tracking-tight md:text-4xl">Clinic workspace</h1>
-        <p className="mt-5 max-w-xl leading-relaxed text-muted-foreground">You’re signed in. Appointment and staff management will be added in the next tasks.</p>
+        <p className="mt-5 max-w-xl leading-relaxed text-muted-foreground">You’re signed in. Patient booking is coming next.</p>
+        {principal.role === "admin" && <div className="mt-8 max-w-xl rounded-2xl border bg-card p-6"><h2 className="text-lg font-semibold">Prepare your clinic</h2><p className="mt-2 mb-5 text-sm leading-relaxed text-muted-foreground">Set clinic details, appointment rules and weekly opening hours.</p><Button asChild><Link href="/admin/settings">Clinic settings</Link></Button></div>}
       </section>
     </main>
   );
