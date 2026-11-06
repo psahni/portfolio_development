@@ -1,6 +1,6 @@
-# M1 — Foundation specification
+# ✅ M1 — Foundation implemented
 
-**Approach 1 approved. Status: foundation implemented; visual browser QA pending. The [code/PIN revision](AUTH_CODE_REVISION.md) supersedes the original password-login design.**
+**✅ Implementation complete.** Visual browser QA remains pending. Approach 1 approved; the [code/PIN revision](AUTH_CODE_REVISION.md) supersedes the original password-login design.
 
 ## Outcome
 

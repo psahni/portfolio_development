@@ -4,13 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { beforeAll, afterAll, describe, expect, inject, it } from "vitest";
+import { beforeAll, beforeEach, afterAll, describe, expect, inject, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { createDatabase } from "@/db/connection";
 import { patientUser, patientVerification, staffUser, staffAccess, staffSession } from "@/db/schema/auth";
 import { createIdentity } from "@/modules/identity/create-auth";
 import { bootstrapAdmin } from "@/modules/identity/admin-pin";
+import { createStaffAuthHandler } from "@/modules/identity/http";
 import type { LoginCode } from "@/platform/mail";
 
 const baseURL = "http://localhost:3000";
@@ -276,6 +277,88 @@ describe("clinic and admin access checks", () => {
     } finally {
       await database.db.update(staffAccess).set({ role: "admin", adminPinHash: original.adminPinHash }).where(eq(staffAccess.userId, adminId));
     }
+  });
+});
+
+describe("staff HTTP login and logout", () => {
+  let client = 20;
+  beforeEach(() => { client++; });
+  function handler() {
+    const auth = makeIdentity(true);
+    return createStaffAuthHandler(() => auth.staff, () => baseURL);
+  }
+  function request(path: string, body: object, cookie = "", origin = baseURL) {
+    return new Request(`${baseURL}/api/auth/staff/${path}`, {
+      method: "POST", headers: { "content-type": "application/json", origin, cookie, "x-forwarded-for": `192.0.2.${client}` }, body: JSON.stringify(body),
+    });
+  }
+
+  it("sets a private admin cookie, omits tokens from JSON and revokes the session on sign out", async () => {
+    const handle = handler();
+    const login = await handle(request("sign-in/admin-pin", { email: adminEmail, pin: initialPin }));
+    expect(login.status).toBe(200);
+    expect(await login.json()).toEqual({ success: true });
+    expect(login.headers.get("cache-control")).toBe("no-store");
+    expect(login.headers.get("set-cookie")).toContain("HttpOnly");
+    const cookie = cookies(login);
+    await expect(identity.access.requireAdminAccess(new Headers({ cookie }))).resolves.toMatchObject({ userId: adminId });
+    const logout = await handle(request("sign-out", {}, cookie));
+    expect(logout.status).toBe(200);
+    expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+    await expect(identity.access.requireClinicAccess(new Headers({ cookie }))).rejects.toMatchObject({ status: "UNAUTHORIZED" });
+  });
+
+  it("requires staff to request a code before signing in with localhost 0000", async () => {
+    const handle = handler();
+    expect((await handle(request("sign-in/admin-pin", { email: staffEmail, pin: "0000" }))).status).toBe(401);
+    const sent = await handle(request("email-otp/send-verification-otp", { email: staffEmail, type: "sign-in" }));
+    expect(sent.status).toBe(200);
+    const login = await handle(request("sign-in/email-otp", { email: staffEmail, otp: "0000" }));
+    expect(login.status).toBe(200);
+    expect(await login.json()).toEqual({ success: true });
+    await expect(identity.access.requireClinicAccess(new Headers({ cookie: cookies(login) }))).resolves.toMatchObject({ role: "staff" });
+    expect((await handle(request("sign-in/email-otp", { email: staffEmail, otp: "0000" }))).status).toBe(400);
+  });
+
+  it.each([staffEmail, "unknown-http@example.test", "inactive@example.test", adminEmail])("keeps code-request responses generic for %s", async (email) => {
+    const response = await handler()(request("email-otp/send-verification-otp", { email, type: "sign-in" }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ success: true });
+  });
+
+  it("rejects malformed code requests and unsupported verification types", async () => {
+    const handle = handler();
+    for (const body of [{ email: "invalid", type: "sign-in" }, { email: staffEmail, type: "forget-password" }]) {
+      expect((await handle(request("email-otp/send-verification-otp", body))).status).toBe(400);
+    }
+    const malformed = new Request(`${baseURL}/api/auth/staff/email-otp/send-verification-otp`, {
+      method: "POST", headers: { "content-type": "application/json", origin: baseURL }, body: "{",
+    });
+    expect((await handle(malformed)).status).toBe(400);
+  });
+
+  it("exposes only the required POST endpoints and retains origin checks", async () => {
+    const handle = handler();
+    for (const path of ["sign-up/email", "admin/reset-pin", "get-session"]) {
+      expect((await handle(request(path, {}))).status).toBe(404);
+    }
+    expect((await handle(new Request(`${baseURL}/api/auth/staff/sign-out`))).status).toBe(405);
+    expect((await handle(request("sign-in/admin-pin", { email: adminEmail, pin: initialPin }, "", "https://other.example.test"))).status).toBe(403);
+  });
+
+  it("retains code-request attempt limits", async () => {
+    const handle = handler();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      expect((await handle(request("email-otp/send-verification-otp", { email: staffEmail, type: "sign-in" }))).status).toBe(200);
+    }
+    expect((await handle(request("email-otp/send-verification-otp", { email: staffEmail, type: "sign-in" }))).status).toBe(429);
+  });
+
+  it("returns a generic unavailable response without revealing server configuration", async () => {
+    const handle = createStaffAuthHandler(() => { throw new Error("private-synthetic-server-configuration"); }, () => baseURL);
+    const response = await handle(request("sign-in/admin-pin", { email: adminEmail, pin: initialPin }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "Sign-in is temporarily unavailable. Please try again." });
   });
 });
 

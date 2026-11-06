@@ -28,7 +28,7 @@ Email codes are expiring and single-use. Protect PIN hashes using the server sec
 
 For local testing only, `AUTH_TEST_MODE=true` enables `0000` for existing active accounts. Email-code users must still request a fresh code; no email is sent in this mode. Admin test login uses `0000` instead of the PIN. Production/non-loopback origins reject test mode. It cannot create users, reset PINs or bypass disabled accounts/lockout.
 
-M1 isolates patient and staff identities in separate PostgreSQL auth schemas, endpoint paths and cookies. The [auth revision](specs/AUTH_CODE_REVISION.md) adds bootstrap, staff approval and admin PIN/reset services. Public forms/handlers, shared request-abuse controls and full staff management remain M2/M4 work.
+M1 isolates patient and staff identities in separate PostgreSQL auth schemas, endpoint paths and cookies. The [auth revision](specs/AUTH_CODE_REVISION.md) adds bootstrap, access checks and the shared clinic login/workspace. Only required staff login/logout handlers are mounted; staff codes currently use localhost test mode. Staff management, PIN-change screens, real email and patient login remain future tasks; advanced shared abuse controls are deferred to M6.
 
 ## Booking and cancellation
 

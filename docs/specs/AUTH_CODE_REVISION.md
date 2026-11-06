@@ -1,6 +1,6 @@
 # Authentication revision — codes and admin PIN
 
-**Status: auth foundation implemented and verified.** This supersedes M1's password-login criteria. Public login forms remain M2/M4.
+**✅ Status: auth foundation, access checks and shared clinic login implemented.** This supersedes M1's password-login criteria. Patient login remains M4; real staff email delivery is a later task.
 
 ## Confirmed behavior
 
@@ -25,13 +25,13 @@
 
 ## Boundaries
 
-Keep Better Auth session/cookie handling and separate patient/staff stores. Add a small admin-PIN plugin and one staff-access table. Public auth handlers stay unmounted until M2 adds shared request-abuse policies and forms. Bootstrap secrets come from ignored environment configuration, never source defaults or command-line arguments.
+Keep Better Auth session/cookie handling and separate patient/staff stores. Add a small admin-PIN plugin and one staff-access table. M2.2 connects staff login with existing access checks and login limits; advanced shared abuse controls are deferred to M6. Bootstrap secrets come from ignored environment configuration, never source defaults or command-line arguments.
 
 Four-digit PINs have limited entropy, so PIN hashing, persistent lockout and request throttling are required. Staff auth secret rotation requires a controlled PIN reset because that secret protects the stored PIN material.
 
 ## M2.1: server-side access checks
 
-**Status: implemented; ready for review.** Before connecting `/admin`, add reusable server-side checks for clinic access and admin-only actions.
+**✅ Implemented and merged.** Reusable server-side checks for clinic access and admin-only actions.
 
 - An active admin or staff session passes the clinic-access check; only the active admin passes the admin-only check.
 - Missing, expired or revoked sessions and patient sessions are rejected, including patients with the same email as staff.
@@ -42,7 +42,9 @@ Scope: access checks only. No new login UI, public auth routes, staff-management
 
 Verification: 12 unit tests, 29 PostgreSQL integration tests, lint, typecheck and production build passed. No new dependencies or schema changes.
 
-## Shared login screen — M2, planned
+## M2.2: shared login and protected workspace
+
+**✅ Implemented; ready for review.** The following flow uses localhost test mode; real email delivery is a later task.
 
 1. **Initial state:** Show only **Email** and **PIN** inputs, **Sign in**, and a **Send code** link/button directly below PIN. Both admin and staff see the identical interface. Admin uses this state to submit Email + PIN.
 2. **Request code:** Validate Email only; PIN must not be required for Send code. Keep responses generic without exposing account existence/role.
@@ -51,9 +53,12 @@ Verification: 12 unit tests, 29 PostgreSQL integration tests, lint, typecheck an
 
 No role selector, separate staff page or pre-login role-based disabling is needed.
 - Resolve the allowed method through server-side account checks; credential length never determines role or privileges. Verify that local staff code `0000` still uses the requested-code flow.
-- This is the UI contract for M2; the screen is not implemented or verified in this foundation revision.
+- Successful login opens `/admin/workspace`, protected by M2.1 checks. Sign out revokes the session and returns to `/admin`; patient, disabled, expired and revoked sessions cannot open the workspace.
+- Add a home-page sign-in link, pending/error feedback and keyboard/mobile-friendly forms. Verify UI transitions and real PostgreSQL-backed login/logout; keep existing attempt limits and origin checks. No staff-management or PIN-change screen in this task.
 
-## Verification
+Verification: 12 unit tests, 39 PostgreSQL integration tests and 6 Chromium browser tests passed, including mobile/keyboard flows. Lint, typecheck and production build passed; desktop/mobile login screenshots reviewed. No new dependencies or migrations.
+
+## Foundation verification (historical)
 
 - `pnpm test`: **12 passing unit tests**, including default-off test mode and rejection in production/non-loopback origins.
 - `pnpm test:integration`: **17 passing real PostgreSQL tests**, including explicit staff PIN/test-code/role-spoof rejection, the bootstrap CLI with synthetic credentials, idempotent bootstrap, migration upgrade, staff approval, PIN concurrency/lockout/reset/session revocation and test-code boundaries.
