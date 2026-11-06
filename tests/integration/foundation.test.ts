@@ -183,6 +183,102 @@ describe("email-code authentication", () => {
   });
 });
 
+describe("clinic and admin access checks", () => {
+  it("allows an active admin into the clinic and admin-only actions", async () => {
+    const response = await adminLogin();
+    expect(response.status).toBe(200);
+    const headers = new Headers({ cookie: cookies(response) });
+    const principal = await identity.access.requireClinicAccess(headers);
+    expect(principal).toEqual({ userId: adminId, sessionId: expect.any(String), role: "admin" });
+    expect(await identity.access.requireAdminAccess(headers)).toEqual(principal);
+  });
+
+  it("allows active staff into the clinic but rejects admin-only actions and role spoofing", async () => {
+    const { response } = await emailLogin("staff", staffEmail);
+    const headers = new Headers({ cookie: cookies(response), "x-user-role": "admin", "x-user-id": adminId });
+    expect(await identity.access.requireClinicAccess(headers)).toEqual({
+      userId: expect.any(String), sessionId: expect.any(String), role: "staff",
+    });
+    await expect(identity.access.requireAdminAccess(headers)).rejects.toMatchObject({ status: "FORBIDDEN" });
+  });
+
+  it.each(["", "nuvortiq-staff.session_token=forged-session"])("rejects missing or invalid session cookies: %s", async (cookie) => {
+    const headers = new Headers({ cookie, "x-user-role": "admin", "x-user-id": adminId });
+    for (const guard of [identity.access.requireClinicAccess, identity.access.requireAdminAccess]) {
+      await expect(guard(headers)).rejects.toMatchObject({ status: "UNAUTHORIZED" });
+    }
+  });
+
+  it.each([staffEmail, adminEmail])("rejects patient sessions sharing the clinic email %s", async (email) => {
+    const { response } = await emailLogin("patient", email);
+    const cookie = cookies(response);
+    // Renaming a patient cookie must not turn it into a valid staff credential.
+    for (const value of [cookie, cookie.replaceAll("nuvortiq-patient", "nuvortiq-staff")]) {
+      const headers = new Headers({ cookie: value });
+      for (const guard of [identity.access.requireClinicAccess, identity.access.requireAdminAccess]) {
+        await expect(guard(headers)).rejects.toMatchObject({ status: "UNAUTHORIZED" });
+      }
+    }
+  });
+
+  it.each(["staff", "admin"] as const)("blocks an existing %s session immediately after disabling access", async (role) => {
+    const response = role === "admin" ? await adminLogin() : (await emailLogin("staff", staffEmail)).response;
+    const headers = new Headers({ cookie: cookies(response) });
+    const principal = await identity.access.requireClinicAccess(headers);
+    await database.db.update(staffAccess).set({ active: false }).where(eq(staffAccess.userId, principal.userId));
+    try {
+      // The session still exists: the denial must come from the current access record.
+      expect(await identity.staff.api.getSession({ headers })).not.toBeNull();
+      for (const guard of [identity.access.requireClinicAccess, identity.access.requireAdminAccess]) {
+        await expect(guard(headers)).rejects.toMatchObject({ status: "FORBIDDEN" });
+      }
+    } finally {
+      await database.db.update(staffAccess).set({ active: true }).where(eq(staffAccess.userId, principal.userId));
+    }
+  });
+
+  it.each(["expired", "revoked"] as const)("rejects a previously accepted session after it is %s", async (state) => {
+    const { response } = await emailLogin("staff", staffEmail);
+    const headers = new Headers({ cookie: cookies(response) });
+    const principal = await identity.access.requireClinicAccess(headers);
+    if (state === "expired") {
+      await database.db.update(staffSession).set({ expiresAt: new Date(0) }).where(eq(staffSession.id, principal.sessionId));
+    } else {
+      await database.db.delete(staffSession).where(eq(staffSession.id, principal.sessionId));
+    }
+    for (const guard of [identity.access.requireClinicAccess, identity.access.requireAdminAccess]) {
+      await expect(guard(headers)).rejects.toMatchObject({ status: "UNAUTHORIZED" });
+    }
+  });
+
+  it("rejects a valid session when its staff access record is removed", async () => {
+    const email = "removed-access@example.test";
+    const userId = await approveStaff(email);
+    const { response } = await emailLogin("staff", email);
+    const headers = new Headers({ cookie: cookies(response) });
+    await expect(identity.access.requireClinicAccess(headers)).resolves.toMatchObject({ userId });
+    await database.db.delete(staffAccess).where(eq(staffAccess.userId, userId));
+    expect(await identity.staff.api.getSession({ headers })).not.toBeNull();
+    for (const guard of [identity.access.requireClinicAccess, identity.access.requireAdminAccess]) {
+      await expect(guard(headers)).rejects.toMatchObject({ status: "FORBIDDEN" });
+    }
+  });
+
+  it("uses the latest database role rather than a previous access result", async () => {
+    const response = await adminLogin();
+    const headers = new Headers({ cookie: cookies(response) });
+    await expect(identity.access.requireAdminAccess(headers)).resolves.toMatchObject({ role: "admin" });
+    const [original] = await database.db.select().from(staffAccess).where(eq(staffAccess.userId, adminId));
+    await database.db.update(staffAccess).set({ role: "staff", adminPinHash: null }).where(eq(staffAccess.userId, adminId));
+    try {
+      await expect(identity.access.requireClinicAccess(headers)).resolves.toMatchObject({ role: "staff" });
+      await expect(identity.access.requireAdminAccess(headers)).rejects.toMatchObject({ status: "FORBIDDEN" });
+    } finally {
+      await database.db.update(staffAccess).set({ role: "admin", adminPinHash: original.adminPinHash }).where(eq(staffAccess.userId, adminId));
+    }
+  });
+});
+
 describe("admin PIN", () => {
   it("never permits staff PIN login, even with a known admin PIN, test code or spoofed role", async () => {
     const [user] = await database.db.select().from(staffUser).where(eq(staffUser.email, staffEmail));
@@ -230,6 +326,7 @@ describe("admin PIN", () => {
     const changed = await identity.staff.api.resetAdminPin({ body: { currentPin: initialPin, newPin: "7531" }, headers: new Headers({ cookie }), asResponse: true });
     expect(changed.status).toBe(200);
     expect(await identity.staff.api.getSession({ headers: new Headers({ cookie }) })).toBeNull();
+    await expect(identity.access.requireAdminAccess(new Headers({ cookie }))).rejects.toMatchObject({ status: "UNAUTHORIZED" });
     expect((await adminLogin(initialPin)).status).toBeGreaterThanOrEqual(400);
     expect((await adminLogin("7531")).status).toBe(200);
   });

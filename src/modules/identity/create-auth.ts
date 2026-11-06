@@ -10,6 +10,7 @@ import { patientAuthTables, staffAuthTables, staffAccess, staffUser } from "@/db
 import type { AuthMailer } from "@/platform/mail";
 import { adminPinPlugin } from "./admin-pin-plugin";
 import { resolveTestAuthMode, TEST_LOGIN_CODE } from "./test-mode";
+import { createAccessChecks } from "./access";
 
 type AuthConfiguration = {
   db: ApplicationDatabase;
@@ -98,5 +99,6 @@ export function createIdentity({ db, baseURL, patientSecret, staffSecret, mailer
     }), adminPinPlugin(db, { staffSecret, testMode: testing, baseURL })],
   });
 
-  return { patient, staff };
+  const access = createAccessChecks(db, staff);
+  return { patient, staff, access };
 }

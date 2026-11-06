@@ -29,6 +29,19 @@ Keep Better Auth session/cookie handling and separate patient/staff stores. Add 
 
 Four-digit PINs have limited entropy, so PIN hashing, persistent lockout and request throttling are required. Staff auth secret rotation requires a controlled PIN reset because that secret protects the stored PIN material.
 
+## M2.1: server-side access checks
+
+**Status: implemented; ready for review.** Before connecting `/admin`, add reusable server-side checks for clinic access and admin-only actions.
+
+- An active admin or staff session passes the clinic-access check; only the active admin passes the admin-only check.
+- Missing, expired or revoked sessions and patient sessions are rejected, including patients with the same email as staff.
+- Read role and active status from the database on each check. Disabling staff must block their existing sessions; client-supplied roles never grant access.
+- Verify these cases with real PostgreSQL integration tests, then run lint, typecheck and the existing tests.
+
+Scope: access checks only. No new login UI, public auth routes, staff-management screens or email provider. Record changed-file purposes, important logic and test results in the PR description.
+
+Verification: 12 unit tests, 29 PostgreSQL integration tests, lint, typecheck and production build passed. No new dependencies or schema changes.
+
 ## Shared login screen — M2, planned
 
 1. **Initial state:** Show only **Email** and **PIN** inputs, **Sign in**, and a **Send code** link/button directly below PIN. Both admin and staff see the identical interface. Admin uses this state to submit Email + PIN.
