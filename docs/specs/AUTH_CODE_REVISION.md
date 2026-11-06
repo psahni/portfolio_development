@@ -31,10 +31,12 @@ Four-digit PINs have limited entropy, so PIN hashing, persistent lockout and req
 
 ## Shared login screen — M2, planned
 
-- The identical `/admin` form is shown to everyone before login: **Email**, **PIN**, **Email code**, **Send code** and **Sign in**. No role selector, separate staff page or role-based field disabling.
-- Admin fills Email + PIN; staff request a code and fill Email + Email code. Require exactly one of PIN/Email code; reject both-filled or neither-filled submissions.
-- The filled field selects the requested method. Server-side account and credential checks enforce privileges; staff PIN login is rejected even if they submit the admin PIN or local test code.
-- Keep code-request responses generic: do not expose account existence or role in the form. The UI does not need to identify the role before rendering.
+1. **Initial state:** Show only **Email** and **PIN** inputs, **Sign in**, and a **Send code** link/button directly below PIN. Both admin and staff see the identical interface. Admin uses this state to submit Email + PIN.
+2. **Request code:** Validate Email only; PIN must not be required for Send code. Keep responses generic without exposing account existence/role.
+3. **Code state:** After a successful request, replace Email/PIN inputs with only **Code** and **Sign in**. Retain the original email in flow state, clear PIN, and submit that email + code. Staff must use this path; no PIN is sent for code verification.
+4. **Validation:** Select method through explicit form state, never credential length or a client role claim. Server-side role/credential checks still reject staff PIN login, including test code `0000`. Verify one-time-code expiry/replay and that switching states never mixes PIN and code credentials.
+
+No role selector, separate staff page or pre-login role-based disabling is needed.
 - Resolve the allowed method through server-side account checks; credential length never determines role or privileges. Verify that local staff code `0000` still uses the requested-code flow.
 - This is the UI contract for M2; the screen is not implemented or verified in this foundation revision.
 
