@@ -6,6 +6,8 @@
 
 **Availability:** Admin → **Availability** → choose a future date → **Show day**. Mark **Holiday / Closed**, apply and reload: no slots. Restore **Use weekly hours**: slots return. Try **Special hours** and a one-off break: only that date changes, and blocked times disappear from the preview. Restoring weekly hours keeps breaks until removed. Overlapping breaks/hours must be rejected. Previewing never books a slot.
 
+**Doctor calendar:** Admin → **Calendar**. Switch Day/Week, choose dates, navigate and refresh. Available slots are green, booked times red and breaks amber; each also has a text label. Add a break in Availability and refresh Calendar to check it. Booked cards use existing appointment reservations; synthetic browser tests cover them until booking creation is implemented. Viewing creates no reservation.
+
 ## 1. Local setup
 
 Keep your existing dev server running. Start local PostgreSQL if needed, then use your ignored `.env.local` settings:

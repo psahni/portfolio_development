@@ -10,6 +10,8 @@ Native booking for one clinic, one branch and one doctor. The selected patient-b
 
 **Availability (#7):** Open **Availability** in the workspace to preview slots, mark a holiday, set special hours for one date or add/remove a personal break. Restoring weekly hours keeps separately saved breaks. Previewing does not reserve a slot; booking follows in the next task.
 
+**Doctor calendar (#20):** Open **Calendar** for Day/Week views: green Available, red Booked and amber Break cards, with text labels. Navigate dates or refresh to see current data in the clinic timezone. This view reads existing reservations; booking creation is the next task.
+
 ## Run locally
 
 Use Node.js 24 LTS (`.nvmrc`) or Node.js 26 and pnpm 12.18.0. Dependencies are pinned in `pnpm-lock.yaml`.

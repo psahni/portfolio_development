@@ -13,6 +13,10 @@ function seedIntervals(view: AvailabilityView): TimeInterval[] {
   return source.length ? source.map((entry) => ({ ...entry })) : [{ start: "09:00", end: "17:00" }];
 }
 
+function sameIntervals(current: TimeInterval[], saved: TimeInterval[]) {
+  return current.length === saved.length && current.every((entry, index) => entry.start === saved[index].start && entry.end === saved[index].end);
+}
+
 export function AvailabilityEditor({ initial }: { initial: AvailabilityView }) {
   const router = useRouter();
   const [view, setView] = useState(initial), [date, setDate] = useState(initial.date);
@@ -23,6 +27,14 @@ export function AvailabilityEditor({ initial }: { initial: AvailabilityView }) {
   const [pending, setPending] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [conflicts, setConflicts] = useState<ConflictTime[]>([]);
   const mustLoad = date !== view.date;
+  const savedMode = view.override?.mode ?? "weekly";
+  const hasScheduleChanges = mode !== savedMode
+    || (mode !== "weekly" && reason.trim() !== (view.override?.reason ?? ""))
+    || (mode === "custom" && !sameIntervals(intervals, view.override?.intervals ?? []));
+  const breakMessage = mustLoad ? "Choose Show day before managing breaks for this date."
+    : hasScheduleChanges ? "Apply your schedule changes before managing one-off breaks."
+    : !view.effectiveHours.length ? "The clinic is closed on this date, so one-off breaks do not apply. Saved breaks are kept and will return when the day reopens."
+    : null;
   const title = new Intl.DateTimeFormat("en-US", { weekday: "long", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${view.date}T12:00Z`));
 
   async function request(method: string, body?: object, targetDate = view.date) {
@@ -55,6 +67,7 @@ export function AvailabilityEditor({ initial }: { initial: AvailabilityView }) {
 
   function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending || mustLoad || !hasScheduleChanges) return;
     setConflicts([]); setNotice("");
     const parsed = overrideSchema.safeParse({ date: view.date, mode, intervals: mode === "custom" ? intervals : [], reason });
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
@@ -63,6 +76,7 @@ export function AvailabilityEditor({ initial }: { initial: AvailabilityView }) {
 
   function addBreak(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending || breakMessage) return;
     setConflicts([]); setNotice("");
     const parsed = breakSchema.safeParse({ date: view.date, start: breakStart, end: breakEnd, reason: breakReason });
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
@@ -96,16 +110,19 @@ export function AvailabilityEditor({ initial }: { initial: AvailabilityView }) {
             <Button type="button" size="sm" variant="outline" className="col-span-2 w-fit" aria-label={`Remove special interval ${index + 1}`} onClick={() => setIntervals(intervals.filter((_, i) => i !== index))}>Remove</Button>
           </div>)}<Button type="button" variant="outline" size="sm" disabled={intervals.length >= 8} onClick={() => setIntervals([...intervals, { start: "09:00", end: "17:00" }])}>Add special hours</Button></div>}
           {mode !== "weekly" && <div><label htmlFor="override-note" className="text-sm font-medium">Schedule note (optional)</label><input id="override-note" value={reason} maxLength={160} onChange={(event) => setReason(event.target.value)} className={inputClass} /></div>}
-          <Button type="submit">Apply schedule</Button>
+          <Button type="submit" disabled={!hasScheduleChanges}>Apply schedule</Button>
         </fieldset>
       </form>
       <section className={cardClass} aria-labelledby="one-off-breaks">
-        <h2 id="one-off-breaks" className="text-lg font-semibold">One-off breaks</h2><p className="mt-2 mb-5 text-sm text-muted-foreground">Add each break using Add break, then repeat for more breaks on this day. Each stays blocked until removed, even after restoring weekly hours.</p>
+        <h2 id="one-off-breaks" className="text-lg font-semibold">One-off breaks</h2>
+        {breakMessage ? <p className="mt-3 text-sm text-muted-foreground">{breakMessage}</p> : <>
+        <p className="mt-2 mb-5 text-sm text-muted-foreground">Add each break using Add break, then repeat for more breaks on this day. Each stays blocked until removed, even after restoring weekly hours.</p>
         <form onSubmit={addBreak} noValidate><fieldset disabled={pending || mustLoad} className="space-y-4">
           <div className="grid grid-cols-2 gap-3"><div><label htmlFor="break-start" className="text-sm font-medium">Break starts</label><input id="break-start" type="time" value={breakStart} onChange={(event) => setBreakStart(event.target.value)} className={inputClass} /></div><div><label htmlFor="break-end" className="text-sm font-medium">Break ends</label><input id="break-end" type="time" value={breakEnd} onChange={(event) => setBreakEnd(event.target.value)} className={inputClass} /></div></div>
           <div><label htmlFor="break-note" className="text-sm font-medium">Break note (optional)</label><input id="break-note" maxLength={160} value={breakReason} onChange={(event) => setBreakReason(event.target.value)} className={inputClass} /></div><Button type="submit" variant="outline">Add break</Button>
         </fieldset></form>
         <ul aria-label="Saved breaks" className="mt-5 space-y-3">{view.blocks.map((block) => <li key={block.id} className="rounded-lg border p-3"><p className="text-sm font-medium">{block.label}</p>{block.reason && <p className="mt-1 break-words text-sm text-muted-foreground">{block.reason}</p>}<Button className="mt-3" type="button" size="sm" variant="outline" disabled={pending || mustLoad} aria-label={`Remove break ${block.label}`} onClick={() => void perform(async () => { await request("DELETE", { date: view.date, id: block.id }); await refresh(view.date); }, "Break removed.")}>Remove break</Button></li>)}</ul>
+        </>}
       </section>
     </div>
     <section className={cardClass} aria-labelledby="available-slots">
