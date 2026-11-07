@@ -4,6 +4,8 @@
 
 **Clinic settings:** After `pnpm db:migrate`, sign in as admin → **Clinic settings**. Enter names, choose a timezone, set appointment rules and add weekly hours. Save and reload to verify persistence. Overlapping/reversed hours must be rejected; removing all intervals closes a day. Staff cannot open this page or change settings.
 
+**Availability:** Admin → **Availability** → choose a future date → **Show day**. Mark **Holiday / Closed**, apply and reload: no slots. Restore **Use weekly hours**: slots return. Try **Special hours** and a one-off break: only that date changes, and blocked times disappear from the preview. Restoring weekly hours keeps breaks until removed. Overlapping breaks/hours must be rejected. Previewing never books a slot.
+
 ## 1. Local setup
 
 Keep your existing dev server running. Start local PostgreSQL if needed, then use your ignored `.env.local` settings:

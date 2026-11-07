@@ -2,6 +2,7 @@ import "server-only";
 import { isAPIError } from "better-auth/api";
 import { ZodError } from "zod";
 import type { createClinicService } from "./service";
+import { SchedulingError } from "@/modules/scheduling/models";
 
 export function createClinicHandler(getService: () => ReturnType<typeof createClinicService>, getTrustedOrigin: () => string) {
   return async (request: Request) => {
@@ -13,6 +14,7 @@ export function createClinicHandler(getService: () => ReturnType<typeof createCl
       const settings = await getService().save(request.headers, await request.json());
       return respond({ settings });
     } catch (error) {
+      if (error instanceof SchedulingError) return respond({ error: error.message, conflicts: error.conflicts }, error.statusCode);
       if (isAPIError(error) && (error.status === "UNAUTHORIZED" || error.status === "FORBIDDEN")) {
         return respond({ error: "Admin access is required." }, error.statusCode);
       }

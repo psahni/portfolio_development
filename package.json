@@ -23,6 +23,7 @@
     "db:local": "tsx scripts/local-postgres.ts"
   },
   "dependencies": {
+    "@js-temporal/polyfill": "0.5.1",
     "@radix-ui/react-slot": "1.5.0",
     "better-auth": "1.7.18",
     "class-variance-authority": "0.7.1",

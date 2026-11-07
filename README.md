@@ -1,12 +1,14 @@
 # Nuvortiq Smart Booking
 
-Native booking for one clinic, one branch and one doctor. Approach 1 is being built through short specifications and verified milestones.
+Native booking for one clinic, one branch and one doctor. The selected patient-booking-first approach is delivered through small, reviewed tasks.
 
 **Current delivery: shared clinic login (M2.2).** `/admin` supports admin email + PIN and staff email-code login, leading to a protected `/admin/workspace` with sign out. Staff codes use explicit localhost test mode for this task; a real email provider is still pending. Patient booking, staff management and PIN-change screens are later tasks. Only the required staff login/logout endpoints are mounted.
 
 **Testing now:** Follow the [testing steps](docs/TESTING.md). The home page links to clinic sign-in; booking remains pending.
 
 **Clinic setup (#6):** After migration, sign in as admin and open **Clinic settings** in the workspace. Save clinic/doctor details, select a timezone, set appointment rules and add weekly opening intervals. Closed days have no intervals; settings persist across restarts.
+
+**Availability (#7):** Open **Availability** in the workspace to preview slots, mark a holiday, set special hours for one date or add/remove a personal break. Restoring weekly hours keeps separately saved breaks. Previewing does not reserve a slot; booking follows in the next task.
 
 ## Run locally
 
@@ -68,9 +70,9 @@ CI is configured for GitHub Actions and runs on pushes and pull requests. Check 
 
 ## Spec-driven workflow
 
-1. Write the milestone's outcome, acceptance criteria and boundaries under `docs/specs/`.
+1. Define the task's outcome, acceptance criteria and boundaries in its GitHub issue.
 2. Implement only that slice and its meaningful behavior tests.
-3. Record actual checks and remaining limitations in the spec.
+3. Record changed-file purposes, important logic, checks and limitations in its PR description.
 4. Review the working milestone before expanding to the next slice.
 
 See [implementation plan](docs/IMPLEMENTATION_PLAN.md), [architecture](docs/ARCHITECTURE.md), [database design](docs/DATABASE.md) and [agent guidance](AGENTS.md). The website button will open the native booking page. Selecting a slot will not reserve it; only a committed **Confirm Booking** action will create occupancy and queue Calendar sync.

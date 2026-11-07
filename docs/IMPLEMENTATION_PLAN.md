@@ -1,6 +1,6 @@
 # Nuvortiq Smart Booking — Implementation Options
 
-**Status: patient-booking-first priority selected. Next: clinic settings [#6](https://github.com/psahni/portfolio_development/issues/6), availability, shared booking service, patient booking and the doctor's appointment list. Staff management follows the basic MVP. Use GitHub issues as task specs.**
+**Status: patient-booking-first priority selected. ✅ Clinic settings [#6](https://github.com/psahni/portfolio_development/issues/6) merged. Availability [#7](https://github.com/psahni/portfolio_development/issues/7) implemented for review. Next: shared booking service, patient booking and the doctor's appointment list. Staff management follows the basic MVP. Use GitHub issues as task specs.**
 
 **Progress:** ✅ M1 foundation, M2.1 access checks and M2.2 shared clinic login are implemented. The [auth revision](specs/AUTH_CODE_REVISION.md) records the flow and checks. Staff management, PIN-change screens and real email delivery remain pending.
 

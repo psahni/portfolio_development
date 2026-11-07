@@ -1,6 +1,6 @@
 # Nuvortiq Smart Booking — MVP Database
 
-**Status:** Auth schemas, `staff_access`, `clinic_settings`, `doctor_profile` and `weekly_hours` are implemented. Appointment and integration tables remain planned.
+**Status:** Auth, clinic settings, weekly hours, `day_overrides` and `reservations` are implemented. Appointment records and integration tables remain planned.
 
 Use **PostgreSQL**, **Drizzle ORM** and **Drizzle Kit** for one clinic, one branch and one doctor. PostgreSQL is the booking source of truth. No tenant or branch tables are needed.
 
@@ -12,9 +12,9 @@ Use **PostgreSQL**, **Drizzle ORM** and **Drizzle Kit** for one clinic, one bran
 | `clinic_settings` | One clinic's name, contact details and timezone. |
 | `staff_access` | Auth user, role (`admin` or `staff`), active status, protected admin PIN hash, failed attempts and lock expiry. One admin only. |
 | `doctor_profile` | One doctor's name, appointment duration, buffers and booking limits. |
-| Availability/exception tables | Weekly hours, holidays and special hours. |
+| `weekly_hours`, `day_overrides` | Normal weekly hours; a clinic-local date's holiday or replacement special hours. |
 | `appointments` | Patient account link when present, encrypted contact details, times, status, cancellation details and optional suggested time. |
-| `reservations` | Appointment occupancy and manual blocks, including buffers. |
+| `reservations` | UTC occupancy with PostgreSQL non-overlap protection. Manual breaks work now; booking will add appointment occupancy, including buffers. |
 | Calendar connection/projection tables | Encrypted credentials, event IDs and sync status. |
 | `outbox_jobs`, `notifications` | Saved integration work, notice status, retries and provider message IDs. |
 
