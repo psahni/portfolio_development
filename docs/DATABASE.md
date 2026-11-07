@@ -1,6 +1,6 @@
 # Nuvortiq Smart Booking — MVP Database
 
-**Status: native MVP design. M1/auth revision implements the separate patient/staff auth schemas and `staff_access`; other business tables below remain planned.**
+**Status:** Auth schemas, `staff_access`, `clinic_settings`, `doctor_profile` and `weekly_hours` are implemented. Appointment and integration tables remain planned.
 
 Use **PostgreSQL**, **Drizzle ORM** and **Drizzle Kit** for one clinic, one branch and one doctor. PostgreSQL is the booking source of truth. No tenant or branch tables are needed.
 

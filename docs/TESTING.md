@@ -2,6 +2,8 @@
 
 **Available:** shared `/admin` login, protected `/admin/workspace` and sign out. Booking, staff management and PIN-change screens are still pending.
 
+**Clinic settings:** After `pnpm db:migrate`, sign in as admin → **Clinic settings**. Enter names, choose a timezone, set appointment rules and add weekly hours. Save and reload to verify persistence. Overlapping/reversed hours must be rejected; removing all intervals closes a day. Staff cannot open this page or change settings.
+
 ## 1. Local setup
 
 Keep your existing dev server running. Start local PostgreSQL if needed, then use your ignored `.env.local` settings:
