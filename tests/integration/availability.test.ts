@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Client } from "pg";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { createDatabase } from "@/db/connection";
@@ -14,6 +15,7 @@ import { emptyConfiguration, type ClinicConfiguration } from "@/modules/clinic/c
 import { createSchedulingService } from "@/modules/scheduling/service";
 import { createSchedulingHandler } from "@/modules/scheduling/http";
 import { localInstant } from "@/modules/scheduling/engine";
+import { createCalendarHandler } from "@/modules/scheduling/calendar-http";
 
 const baseURL = "http://localhost:3000", date = "2026-11-10", clock = () => new Date("2026-11-09T08:00Z");
 let database: ReturnType<typeof createDatabase>;
@@ -263,6 +265,85 @@ describe("clinic-local date lookup", () => {
       await reader.removeBreak(credentials.admin, { date, id: view.blocks[0].id });
       expect((await service.preview(credentials.admin, date)).blocks).toHaveLength(0);
     } finally { await otherSession.pool.end(); }
+  });
+});
+
+describe("doctor calendar", () => {
+  it("shows available, booked and break times chronologically without creating reservations", async () => {
+    const booked = await appointment();
+    await service.addBreak(credentials.admin, { date, start: "10:00", end: "10:20", reason: "Personal work" });
+    const view = await service.calendar(credentials.admin, date, "day");
+    expect(view).toMatchObject({ configured: true, date, startDate: date, endDate: date, timezone: "UTC", mode: "day" });
+    const events = view.days[0].events;
+    expect(events.filter((event) => event.kind === "available")).toHaveLength(7);
+    expect(events.find((event) => event.kind === "appointment")).toMatchObject({ id: booked.id, label: "9:20 AM – 9:40 AM", note: "" });
+    expect(events.find((event) => event.kind === "block")).toMatchObject({ note: "Personal work" });
+    expect(events.map((event) => event.startsAt)).toEqual(events.map((event) => event.startsAt).sort());
+    expect(await database.db.select().from(reservations)).toHaveLength(2);
+  });
+  it("uses a Monday-to-Sunday week across year boundaries and shows holidays/special hours", async () => {
+    await service.saveOverride(credentials.admin, { date, mode: "closed" });
+    await service.saveOverride(credentials.admin, { date: "2026-11-11", mode: "custom", intervals: [{ start: "14:00", end: "15:00" }] });
+    const view = await service.calendar(credentials.admin, date);
+    expect(view.startDate).toBe("2026-11-09"); expect(view.endDate).toBe("2026-11-15"); expect(view.days).toHaveLength(7);
+    expect(view.days[1]).toMatchObject({ date, hours: [], events: [] });
+    expect(view.days[2].events[0].label).toBe("2:00 PM – 2:20 PM");
+    const yearEnd = await service.calendar(credentials.admin, "2027-01-01", "week");
+    expect(yearEnd.startDate).toBe("2026-12-28"); expect(yearEnd.endDate).toBe("2027-01-03");
+  });
+  it("retains booked occupancy on closed dates and outside the booking window", async () => {
+    const booked = await appointment();
+    // Historical/imported occupancy must remain visible even if the day is now closed.
+    await database.db.insert(dayOverrides).values({ doctorId: 1, date, mode: "closed" });
+    const futureReader = createSchedulingService(database.db, access, () => new Date("2026-12-01T08:00Z"));
+    const day = (await futureReader.calendar(credentials.admin, date, "day")).days[0];
+    expect(day.outsideWindow).toBe(true); expect(day.hours).toEqual([]);
+    expect(day.events).toHaveLength(1); expect(day.events[0]).toMatchObject({ kind: "appointment", id: booked.id });
+  });
+  it.each(["Asia/Kolkata", "America/Los_Angeles"])("includes week-boundary carry-over occupancy but excludes touching outside times in %s", async (timezone) => {
+    await clinic.save(credentials.admin, { ...configuration(), timezone });
+    const [ending, next] = await database.db.insert(reservations).values([
+      { startDate: "2026-11-08", start: "23:00", endDate: "2026-11-09", end: "00:00" },
+      { startDate: "2026-11-16", start: "00:00", endDate: "2026-11-16", end: "00:20" },
+    ].map((entry) => ({ doctorId: 1, kind: "appointment" as const, startsAt: localInstant(entry.startDate, entry.start, timezone), endsAt: localInstant(entry.endDate, entry.end, timezone) }))).returning();
+    const touching = await service.calendar(credentials.admin, date, "week");
+    expect(touching.days.flatMap((day) => day.events.filter((event) => event.kind === "appointment"))).toHaveLength(0);
+    await database.db.delete(reservations).where(eq(reservations.id, ending.id));
+    const [carry] = await database.db.insert(reservations).values({ doctorId: 1, kind: "appointment", startsAt: localInstant("2026-11-08", "23:40", timezone), endsAt: localInstant("2026-11-09", "00:20", timezone) }).returning();
+    const view = await service.calendar(credentials.admin, date, "week");
+    const booked = view.days.flatMap((day) => day.events.filter((event) => event.kind === "appointment"));
+    expect(booked.map((event) => event.id)).toEqual([carry.id]);
+    expect(booked[0].continuesFromPreviousDay).toBe(true);
+    expect(booked.some((event) => [ending.id, next.id].includes(event.id))).toBe(false);
+  });
+  it.each(["2027-03-14", "2027-11-07"])("displays the correct booked time on the DST date %s", async (selected) => {
+    const timezone = "America/New_York"; await clinic.save(credentials.admin, { ...configuration(), timezone });
+    await database.db.insert(reservations).values({ doctorId: 1, kind: "appointment", startsAt: localInstant(selected, "03:00", timezone), endsAt: localInstant(selected, "03:20", timezone) });
+    const view = await service.calendar(credentials.admin, selected, "day");
+    expect(view.days[0].events.find((event) => event.kind === "appointment")?.label).toBe("3:00 AM – 3:20 AM");
+  });
+  it("defaults to the clinic's current date and reports an unconfigured clinic without writes", async () => {
+    await clinic.save(credentials.admin, { ...configuration(), timezone: "Asia/Kolkata" });
+    const reader = createSchedulingService(database.db, access, () => new Date("2026-11-09T23:00Z"));
+    expect((await reader.calendar(credentials.admin)).date).toBe("2026-11-10");
+    await database.db.delete(clinicSettings);
+    expect(await service.calendar(credentials.admin)).toMatchObject({ configured: false, days: [] });
+    expect(await database.db.select().from(reservations)).toHaveLength(0);
+  });
+  it("serves private calendar responses and rejects invalid queries/mutations", async () => {
+    const handler = createCalendarHandler(() => service);
+    const response = await handler(new Request(`${baseURL}/api/admin/calendar?date=${date}&view=day`, { headers: credentials.admin }));
+    expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("no-store");
+    expect((await response.json()).calendar.days).toHaveLength(1);
+    for (const query of ["date=2026-02-30", "view=month", "date=0000-01-01"]) {
+      expect((await handler(new Request(`${baseURL}/api/admin/calendar?${query}`, { headers: credentials.admin }))).status).toBe(400);
+    }
+    expect((await handler(new Request(`${baseURL}/api/admin/calendar`, { method: "POST", headers: credentials.admin }))).status).toBe(405);
+  });
+  it.each([["anonymous", 401], ["staff", 403], ["patient", 401]] as const)("rejects %s calendar access", async (role, status) => {
+    const handler = createCalendarHandler(() => service);
+    const response = await handler(new Request(`${baseURL}/api/admin/calendar?date=${date}`, { headers: credentials[role] }));
+    expect(response.status).toBe(status);
   });
 });
 

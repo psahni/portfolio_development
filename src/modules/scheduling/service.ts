@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, gt, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, lt, lte, or, sql } from "drizzle-orm";
 import type { ApplicationDatabase } from "@/db/connection";
 import { doctorProfile } from "@/db/schema/clinic";
 import { dayOverrides, reservations } from "@/db/schema/scheduling";
@@ -9,6 +9,8 @@ import type { ClinicPrincipal } from "@/modules/identity/access";
 import { addDays, clinicDate, dayBounds, effectiveHours, generateSlots, instantLabel, localInstant, type Slot } from "./engine";
 import { assertAppointmentsFit } from "./constraints";
 import { breakSchema, conflictTimes, dateSchema, overrideSchema, removeBreakSchema, SchedulingError, type DateOverride, type TimeInterval } from "./models";
+import { calendarQuerySchema, type CalendarView } from "./calendar-model";
+import { buildCalendarDay, calendarDates } from "./calendar";
 
 type Transaction = Parameters<Parameters<ApplicationDatabase["transaction"]>[0]>[0];
 type AdminAccess = { requireAdminAccess(headers: Headers): Promise<ClinicPrincipal> };
@@ -28,16 +30,39 @@ function isOverlapError(error: unknown) {
   return false;
 }
 
-function reservationMatchesDate(date: string, timezone: string) {
+function reservationMatchesDate(date: string, timezone: string, throughDate = date) {
   const { start: midnight } = dayBounds(date, timezone);
   // Compare the clinic-local date, not the UTC date or the database session's date.
-  const startsOnDate = eq(sql<string>`(${reservations.startsAt} AT TIME ZONE ${timezone})::date`, date);
+  const localDate = sql<string>`(${reservations.startsAt} AT TIME ZONE ${timezone})::date`;
+  const startsOnDate = date === throughDate ? eq(localDate, date) : and(gte(localDate, date), lte(localDate, throughDate));
   // A reservation from an earlier date may still occupy the selected day.
   const continuesIntoDate = and(lt(reservations.startsAt, midnight), gt(reservations.endsAt, midnight));
   return or(startsOnDate, continuesIntoDate);
 }
 
 export function createSchedulingService(db: ApplicationDatabase, access: AdminAccess, clock = () => new Date()) {
+  async function calendar(headers: Headers, selected?: string, mode?: string): Promise<CalendarView> {
+    await access.requireAdminAccess(headers);
+    const query = calendarQuerySchema.parse({ date: selected, view: mode });
+    return db.transaction(async (tx) => {
+      const now = clock(), config = await readClinicConfiguration(tx);
+      const timezone = config?.timezone ?? "UTC", today = clinicDate(now, timezone);
+      const date = query.date ?? today, dates = calendarDates(date, query.view);
+      const startDate = dates[0], endDate = dates.at(-1)!;
+      const view: CalendarView = { configured: !!config, date, today, timezone, mode: query.view, startDate, endDate, days: [] };
+      if (!config) return view;
+      const overrides = await tx.select().from(dayOverrides).where(and(
+        eq(dayOverrides.doctorId, 1), gte(dayOverrides.date, startDate), lte(dayOverrides.date, endDate),
+      ));
+      const occupied = await tx.select().from(reservations)
+        .where(and(eq(reservations.doctorId, 1), reservationMatchesDate(startDate, timezone, endDate)))
+        .orderBy(asc(reservations.startsAt));
+      const byDate = new Map(overrides.map((row) => [row.date, row]));
+      view.days = dates.map((day) => buildCalendarDay(config, day, byDate.get(day) ?? null, occupied, now));
+      return view;
+    }, { isolationLevel: "repeatable read", accessMode: "read only" });
+  }
+
   async function preview(headers: Headers, selected?: string): Promise<AvailabilityView> {
     await access.requireAdminAccess(headers);
     return db.transaction(async (tx) => {
@@ -117,5 +142,5 @@ export function createSchedulingService(db: ApplicationDatabase, access: AdminAc
     });
   }
 
-  return { preview, saveOverride, addBreak, removeBreak };
+  return { preview, calendar, saveOverride, addBreak, removeBreak };
 }
