@@ -20,9 +20,9 @@ export function SettingsForm({ initial, timezones }: { initial: ClinicConfigurat
   const [settings, setSettings] = useState(initial);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [notice, setNotice] = useState("");
 
-  function update(next: ClinicConfiguration) { setSettings(next); setError(""); setSaved(false); }
+  function update(next: ClinicConfiguration) { setSettings(next); setError(""); setNotice(""); }
 
   function updateIntervals(day: number, intervals: ClinicConfiguration["weeklyHours"][number]["intervals"]) {
     update({ ...settings, weeklyHours: settings.weeklyHours.map((entry) => entry.day === day ? { ...entry, intervals } : entry) });
@@ -31,7 +31,7 @@ export function SettingsForm({ initial, timezones }: { initial: ClinicConfigurat
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
-    setError(""); setSaved(false);
+    setError(""); setNotice("");
     const parsed = configurationSchema.safeParse(settings);
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
     setPending(true);
@@ -41,7 +41,7 @@ export function SettingsForm({ initial, timezones }: { initial: ClinicConfigurat
       });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.settings) throw new Error(result?.error ?? "Unable to save clinic settings. Please try again.");
-      setSettings(result.settings); setSaved(true); router.refresh();
+      setSettings(result.settings); setNotice("Clinic settings saved."); router.refresh();
     } catch (failure) {
       setError(failure instanceof Error && failure.message !== "Failed to fetch" ? failure.message : "Unable to save clinic settings. Please try again.");
     } finally { setPending(false); }
@@ -82,7 +82,7 @@ export function SettingsForm({ initial, timezones }: { initial: ClinicConfigurat
         </section>
         <section aria-labelledby="weekly-hours" className="rounded-2xl border bg-card p-5 sm:p-7">
           <h2 id="weekly-hours" className="text-lg font-semibold">Weekly hours</h2>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Leave a day closed or add opening hours. Add separate intervals for breaks; each interval must finish on the same day.</p>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Leave a day closed or add opening hours. Add separate intervals for breaks; each interval must finish on the same day. Copy to all days replaces the whole week, including closed days. Save settings to apply.</p>
           <div className="mt-6 space-y-5">
             {settings.weeklyHours.map(({ day, intervals }) => <fieldset key={day} className="min-w-0 border-t pt-4" aria-label={`${DAYS[day]} hours`}>
               <legend className="pr-3 text-sm font-semibold">{DAYS[day]}</legend>
@@ -94,16 +94,21 @@ export function SettingsForm({ initial, timezones }: { initial: ClinicConfigurat
                 </div>)}
                 <Button type="button" variant="outline" size="sm" className="col-span-2 w-fit sm:col-span-1" aria-label={`Remove ${DAYS[day]} interval ${index + 1}`} onClick={() => updateIntervals(day, intervals.filter((_, i) => i !== index))}>Remove</Button>
               </div>)}
-              <Button type="button" variant="outline" size="sm" aria-label={`Add ${DAYS[day]} hours`} disabled={intervals.length >= 8} onClick={() => {
+              <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" aria-label={`Add ${DAYS[day]} hours`} disabled={intervals.length >= 8} onClick={() => {
                 const lastEnd = intervals.length ? Math.max(...intervals.map((entry) => toMinutes(entry.end))) : 540;
                 const start = Number.isFinite(lastEnd) && lastEnd < 1439 ? lastEnd : 540;
                 updateIntervals(day, [...intervals, { start: toTime(start), end: toTime(Math.min(start + (intervals.length ? 60 : 480), 1439)) }]);
               }}>Add hours</Button>
+              <Button type="button" variant="outline" size="sm" aria-label={`Copy ${DAYS[day]} hours to all days`} onClick={() => {
+                // Clone each interval so every day's schedule remains independently editable.
+                update({ ...settings, weeklyHours: settings.weeklyHours.map((entry) => ({ ...entry, intervals: intervals.map((interval) => ({ ...interval })) })) });
+                setNotice(`${DAYS[day]} ${intervals.length ? "hours" : "closed day"} copied to all days. Save settings to apply.`);
+              }}>Copy to all days</Button></div>
             </fieldset>)}
           </div>
         </section>
         {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-        {saved && <p role="status" className="rounded-lg border bg-muted p-3 text-sm text-primary">Clinic settings saved.</p>}
+        {notice && <p role="status" className="rounded-lg border bg-muted p-3 text-sm text-primary">{notice}</p>}
         <Button type="submit" className="w-full sm:w-auto">{pending ? "Saving…" : "Save settings"}</Button>
       </fieldset>
     </form>
