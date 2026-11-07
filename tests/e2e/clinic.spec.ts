@@ -1,11 +1,16 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 
-async function openSettings(page: Page) {
+async function signInAdmin(page: Page) {
   await page.goto("/admin");
   await page.getByLabel("Email", { exact: true }).fill("doctor@example.test");
   await page.getByLabel("PIN", { exact: true }).fill("0000");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Clinic workspace", exact: true })).toBeVisible();
+}
+
+async function openSettings(page: Page) {
+  await signInAdmin(page);
   await page.getByRole("link", { name: "Clinic settings", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Clinic settings", exact: true })).toBeVisible();
 }
@@ -15,6 +20,12 @@ async function fillRequired(page: Page) {
   await page.getByLabel("Doctor name", { exact: true }).fill("Dr Demo");
   await page.getByLabel("Clinic timezone", { exact: true }).selectOption("Asia/Kolkata");
 }
+
+test("unconfigured clinic keeps the workspace setup prompt", async ({ page }) => {
+  await signInAdmin(page);
+  await expect(page.getByRole("heading", { name: "Prepare your clinic", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Saved clinic settings", exact: true })).toHaveCount(0);
+});
 
 test("admin saves clinic details and split weekly hours, reloads and edits them", async ({ page }, testInfo) => {
   await openSettings(page);
@@ -60,6 +71,27 @@ test("admin saves clinic details and split weekly hours, reloads and edits them"
   await expect(page.getByRole("status")).toHaveText("Clinic settings saved.");
   await page.reload();
   await expect(page.getByLabel("Clinic name", { exact: true })).toHaveValue("Riverbank Clinic Updated");
+  await page.getByRole("link", { name: "Back to workspace" }).click();
+  const summary = page.getByRole("region", { name: "Saved clinic settings", exact: true });
+  await expect(summary.getByRole("heading", { name: "Riverbank Clinic Updated", exact: true })).toBeVisible();
+  for (const value of ["Dr Demo", "hello@example.test", "+91 98765 43210", "Asia/Kolkata", "30 min", "5 min", "10 min", "90 min", "Next 45 days"]) {
+    await expect(summary.getByText(value, { exact: true })).toBeVisible();
+  }
+  const hours = summary.getByRole("table", { name: "Weekly opening hours", exact: true });
+  const monday = hours.getByRole("row", { name: /^Monday/ });
+  await expect(monday).toContainText("9:00 AM – 12:00 PM");
+  await expect(monday).toContainText("1:00 PM – 5:00 PM");
+  await expect(hours.getByText("Closed", { exact: true })).toHaveCount(6);
+  await expect(page.getByRole("heading", { name: "Prepare your clinic", exact: true })).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: testInfo.outputPath("desktop-workspace-summary.png"), fullPage: true });
+  await page.setViewportSize({ width: 320, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("mobile-workspace-summary.png"), fullPage: true });
+  await page.reload();
+  await expect(summary.getByRole("heading", { name: "Riverbank Clinic Updated", exact: true })).toBeVisible();
+  await summary.getByRole("link", { name: "Clinic settings", exact: true }).click();
+  await expect(page.getByLabel("Clinic name", { exact: true })).toHaveValue("Riverbank Clinic Updated");
 });
 
 test("overlapping weekly hours are explained without changing saved settings", async ({ page }) => {
@@ -86,6 +118,7 @@ test("staff cannot see the settings link or read/write clinic settings", async (
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Clinic workspace" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Clinic settings", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Saved clinic settings", exact: true })).toHaveCount(0);
   await page.goto("/admin/settings");
   await expect(page).toHaveURL(/\/admin\/workspace$/);
   expect((await page.request.get("/api/admin/settings")).status()).toBe(403);
@@ -179,4 +212,7 @@ test("copying a closed Monday closes the whole week and persists after save", as
   await expect(page.getByRole("status")).toHaveText("Clinic settings saved.");
   await page.reload();
   await expect(page.getByText("Closed", { exact: true })).toHaveCount(7);
+  await page.getByRole("link", { name: "Back to workspace" }).click();
+  await expect(page.getByRole("region", { name: "Saved clinic settings", exact: true })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Weekly opening hours", exact: true }).getByText("Closed", { exact: true })).toHaveCount(7);
 });
