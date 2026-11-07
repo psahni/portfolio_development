@@ -1,32 +1,18 @@
 import "server-only";
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { ApplicationDatabase } from "@/db/connection";
 import { clinicSettings, doctorProfile, weeklyHours } from "@/db/schema/clinic";
 import type { ClinicPrincipal } from "@/modules/identity/access";
-import { configurationSchema, emptyConfiguration, toMinutes, toTime } from "./configuration";
+import { configurationSchema, toMinutes } from "./configuration";
+import { readClinicConfiguration } from "./repository";
+import { assertAppointmentsFit } from "@/modules/scheduling/constraints";
 
 type AdminAccess = { requireAdminAccess(headers: Headers): Promise<ClinicPrincipal> };
 
-export function createClinicService(db: ApplicationDatabase, access: AdminAccess) {
+export function createClinicService(db: ApplicationDatabase, access: AdminAccess, clock = () => new Date()) {
   async function get(headers: Headers) {
     await access.requireAdminAccess(headers);
-    // One statement reads a consistent configuration, including concurrent whole-schedule saves.
-    const rows = await db.select({ clinic: clinicSettings, doctor: doctorProfile, hours: weeklyHours })
-      .from(clinicSettings).innerJoin(doctorProfile, eq(doctorProfile.id, clinicSettings.id))
-      .leftJoin(weeklyHours, eq(weeklyHours.doctorId, doctorProfile.id))
-      .where(eq(clinicSettings.id, 1)).orderBy(asc(weeklyHours.day), asc(weeklyHours.startMinute));
-    if (!rows.length) return null;
-    const { clinic, doctor } = rows[0];
-    const result = {
-      ...emptyConfiguration(), clinicName: clinic.name, doctorName: doctor.name,
-      email: clinic.email, phone: clinic.phone, timezone: clinic.timezone,
-      durationMinutes: doctor.durationMinutes, bufferBeforeMinutes: doctor.bufferBeforeMinutes,
-      bufferAfterMinutes: doctor.bufferAfterMinutes, minLeadMinutes: doctor.minLeadMinutes, bookingHorizonDays: doctor.bookingHorizonDays,
-    };
-    for (const { hours } of rows) {
-      if (hours) result.weeklyHours[hours.day].intervals.push({ start: toTime(hours.startMinute), end: toTime(hours.endMinute) });
-    }
-    return result;
+    return readClinicConfiguration(db);
   }
 
   async function save(headers: Headers, input: unknown) {
@@ -41,6 +27,7 @@ export function createClinicService(db: ApplicationDatabase, access: AdminAccess
       };
       // Upserting the singleton doctor row locks it until commit; schedule replacements cannot interleave.
       await tx.insert(doctorProfile).values({ id: 1, ...doctor }).onConflictDoUpdate({ target: doctorProfile.id, set: doctor });
+      await assertAppointmentsFit(tx, value, clock());
       await tx.delete(weeklyHours).where(eq(weeklyHours.doctorId, 1));
       const intervals = value.weeklyHours.flatMap((day) => day.intervals.map((interval) => ({
         doctorId: 1, day: day.day, startMinute: toMinutes(interval.start), endMinute: toMinutes(interval.end),

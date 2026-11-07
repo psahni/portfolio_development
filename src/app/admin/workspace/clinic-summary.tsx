@@ -25,7 +25,7 @@ export function ClinicSummary({ settings }: { settings: ClinicConfiguration }) {
     <div className="rounded-2xl border bg-card p-6 sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0"><p className="mb-2 text-xs font-semibold tracking-[0.14em] text-primary uppercase">Clinic overview</p><h2 className="break-words text-2xl font-semibold tracking-tight">{settings.clinicName}</h2></div>
-        <Button asChild variant="outline"><Link href="/admin/settings">Clinic settings</Link></Button>
+        <div className="flex min-w-0 max-w-full flex-wrap gap-2"><Button asChild><Link href="/admin/availability">Availability</Link></Button><Button asChild variant="outline"><Link href="/admin/settings">Clinic settings</Link></Button></div>
       </div>
       <dl className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {details.map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-sm text-muted-foreground">{label}</dt><dd className="mt-1 break-words text-sm font-medium leading-relaxed">{value}</dd></div>)}

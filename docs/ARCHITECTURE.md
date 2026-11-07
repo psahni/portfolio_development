@@ -1,6 +1,6 @@
 # Nuvortiq Smart Booking — MVP Architecture
 
-**Status: native MVP and Approach 1 approved; spec-driven implementation begins with M1.**
+**Status: native MVP; patient-booking-first delivery selected. Foundation, clinic login, settings and availability are implemented; booking follows next.**
 
 ## Scope and stack
 

@@ -82,6 +82,7 @@ export default async function setup() {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     process.env.NUVORTIQ_E2E_URL = baseURL;
+    process.env.NUVORTIQ_E2E_DATABASE_URL = databaseUrl;
     return cleanup;
   } catch {
     await cleanup();
