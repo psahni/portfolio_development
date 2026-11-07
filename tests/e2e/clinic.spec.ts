@@ -118,21 +118,22 @@ test("a failed save preserves the form, disables duplicate submissions and can b
   await expect(page.getByRole("status")).toHaveText("Clinic settings saved.");
 });
 
-test("copying any day's split hours updates the draft, allows independent edits and persists on save", async ({ page }, testInfo) => {
+test("only Monday offers copy-to-all; split hours stay editable and persist on save", async ({ page }, testInfo) => {
   await openSettings(page); await fillRequired(page);
+  await expect(page.getByRole("button", { name: /^Copy .* hours to all days$/ })).toHaveCount(1);
   const before = await (await page.request.get("/api/admin/settings")).json();
-  const source = page.getByRole("group", { name: "Wednesday hours", exact: true });
-  while (await source.getByRole("button", { name: /Remove Wednesday interval/ }).count()) {
-    await source.getByRole("button", { name: /Remove Wednesday interval/ }).first().click();
+  const source = page.getByRole("group", { name: "Monday hours", exact: true });
+  while (await source.getByRole("button", { name: /Remove Monday interval/ }).count()) {
+    await source.getByRole("button", { name: /Remove Monday interval/ }).first().click();
   }
-  await page.getByRole("button", { name: "Add Wednesday hours", exact: true }).click();
-  await page.getByLabel("Wednesday closing time 1", { exact: true }).fill("12:00");
-  await page.getByRole("button", { name: "Add Wednesday hours", exact: true }).click();
-  await page.getByLabel("Wednesday opening time 2", { exact: true }).fill("14:00");
-  await page.getByLabel("Wednesday closing time 2", { exact: true }).fill("18:00");
+  await page.getByRole("button", { name: "Add Monday hours", exact: true }).click();
+  await page.getByLabel("Monday closing time 1", { exact: true }).fill("12:00");
+  await page.getByRole("button", { name: "Add Monday hours", exact: true }).click();
+  await page.getByLabel("Monday opening time 2", { exact: true }).fill("14:00");
+  await page.getByLabel("Monday closing time 2", { exact: true }).fill("18:00");
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Copy Wednesday hours to all days", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Wednesday hours copied to all days. Save settings to apply.");
+  await page.getByRole("button", { name: "Copy Monday hours to all days", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Monday hours copied to all days. Save settings to apply.");
   expect(await (await page.request.get("/api/admin/settings")).json()).toEqual(before);
   for (const day of ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]) {
     await expect(page.getByLabel(`${day} opening time 1`, { exact: true })).toHaveValue("09:00");
@@ -143,37 +144,37 @@ test("copying any day's split hours updates the draft, allows independent edits 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await source.scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("mobile-copy-hours.png") });
-  await page.getByLabel("Monday opening time 1", { exact: true }).fill("10:00");
-  await expect(page.getByLabel("Wednesday opening time 1", { exact: true })).toHaveValue("09:00");
+  await page.getByLabel("Tuesday opening time 1", { exact: true }).fill("10:00");
+  await expect(page.getByLabel("Monday opening time 1", { exact: true })).toHaveValue("09:00");
   await page.getByRole("button", { name: "Remove Sunday interval 2", exact: true }).click();
   await page.getByRole("button", { name: "Remove Sunday interval 1", exact: true }).click();
   await page.getByRole("button", { name: "Save settings", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Clinic settings saved.");
   await page.reload();
-  await expect(page.getByLabel("Monday opening time 1", { exact: true })).toHaveValue("10:00");
-  await expect(page.getByLabel("Wednesday opening time 1", { exact: true })).toHaveValue("09:00");
+  await expect(page.getByLabel("Tuesday opening time 1", { exact: true })).toHaveValue("10:00");
+  await expect(page.getByLabel("Monday opening time 1", { exact: true })).toHaveValue("09:00");
   await expect(page.getByRole("group", { name: "Sunday hours", exact: true }).getByText("Closed", { exact: true })).toBeVisible();
   const persisted = (await (await page.request.get("/api/admin/settings")).json()).settings;
-  for (const day of [1, 2, 3, 4, 5]) {
+  for (const day of [0, 2, 3, 4, 5]) {
     expect(persisted.weeklyHours[day].intervals).toEqual([{ start: "09:00", end: "12:00" }, { start: "14:00", end: "18:00" }]);
   }
 });
 
-test("copying a closed day closes the whole week and persists after save", async ({ page }) => {
+test("copying a closed Monday closes the whole week and persists after save", async ({ page }) => {
   await openSettings(page); await fillRequired(page);
-  const sunday = page.getByRole("group", { name: "Sunday hours", exact: true });
-  while (await sunday.getByRole("button", { name: /Remove Sunday interval/ }).count()) {
-    await sunday.getByRole("button", { name: /Remove Sunday interval/ }).first().click();
+  const monday = page.getByRole("group", { name: "Monday hours", exact: true });
+  while (await monday.getByRole("button", { name: /Remove Monday interval/ }).count()) {
+    await monday.getByRole("button", { name: /Remove Monday interval/ }).first().click();
   }
-  if (!(await page.getByLabel("Monday opening time 1", { exact: true }).count())) {
-    await page.getByRole("button", { name: "Add Monday hours", exact: true }).click();
+  if (!(await page.getByLabel("Tuesday opening time 1", { exact: true }).count())) {
+    await page.getByRole("button", { name: "Add Tuesday hours", exact: true }).click();
   }
   await page.getByRole("button", { name: "Save settings", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Clinic settings saved.");
-  await page.getByRole("button", { name: "Copy Sunday hours to all days", exact: true }).click();
+  await page.getByRole("button", { name: "Copy Monday hours to all days", exact: true }).click();
   await expect(page.getByText("Closed", { exact: true })).toHaveCount(7);
   await expect(page.locator('input[type="time"]')).toHaveCount(0);
-  await expect(page.getByRole("status")).toHaveText("Sunday closed day copied to all days. Save settings to apply.");
+  await expect(page.getByRole("status")).toHaveText("Monday closed day copied to all days. Save settings to apply.");
   await page.getByRole("button", { name: "Save settings", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Clinic settings saved.");
   await page.reload();

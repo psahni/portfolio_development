@@ -82,7 +82,7 @@ export function SettingsForm({ initial, timezones }: { initial: ClinicConfigurat
         </section>
         <section aria-labelledby="weekly-hours" className="rounded-2xl border bg-card p-5 sm:p-7">
           <h2 id="weekly-hours" className="text-lg font-semibold">Weekly hours</h2>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Leave a day closed or add opening hours. Add separate intervals for breaks; each interval must finish on the same day. Copy to all days replaces the whole week, including closed days. Save settings to apply.</p>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Leave a day closed or add opening hours. Add separate intervals for breaks; each interval must finish on the same day. Use Monday’s Copy to all days to replace the whole week, including closed days. Save settings to apply.</p>
           <div className="mt-6 space-y-5">
             {settings.weeklyHours.map(({ day, intervals }) => <fieldset key={day} className="min-w-0 border-t pt-4" aria-label={`${DAYS[day]} hours`}>
               <legend className="pr-3 text-sm font-semibold">{DAYS[day]}</legend>
@@ -99,11 +99,11 @@ export function SettingsForm({ initial, timezones }: { initial: ClinicConfigurat
                 const start = Number.isFinite(lastEnd) && lastEnd < 1439 ? lastEnd : 540;
                 updateIntervals(day, [...intervals, { start: toTime(start), end: toTime(Math.min(start + (intervals.length ? 60 : 480), 1439)) }]);
               }}>Add hours</Button>
-              <Button type="button" variant="outline" size="sm" aria-label={`Copy ${DAYS[day]} hours to all days`} onClick={() => {
+              {day === 0 && <Button type="button" variant="outline" size="sm" aria-label="Copy Monday hours to all days" onClick={() => {
                 // Clone each interval so every day's schedule remains independently editable.
                 update({ ...settings, weeklyHours: settings.weeklyHours.map((entry) => ({ ...entry, intervals: intervals.map((interval) => ({ ...interval })) })) });
                 setNotice(`${DAYS[day]} ${intervals.length ? "hours" : "closed day"} copied to all days. Save settings to apply.`);
-              }}>Copy to all days</Button></div>
+              }}>Copy to all days</Button>}</div>
             </fieldset>)}
           </div>
         </section>
