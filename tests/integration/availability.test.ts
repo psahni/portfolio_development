@@ -13,6 +13,7 @@ import { createClinicService } from "@/modules/clinic/service";
 import { emptyConfiguration, type ClinicConfiguration } from "@/modules/clinic/configuration";
 import { createSchedulingService } from "@/modules/scheduling/service";
 import { createSchedulingHandler } from "@/modules/scheduling/http";
+import { localInstant } from "@/modules/scheduling/engine";
 
 const baseURL = "http://localhost:3000", date = "2026-11-10", clock = () => new Date("2026-11-09T08:00Z");
 let database: ReturnType<typeof createDatabase>;
@@ -184,6 +185,84 @@ describe("persisted availability and transaction rules", () => {
     release(); await booking;
     await expect(holiday).rejects.toMatchObject({ statusCode: 409 });
     expect(await database.db.select().from(dayOverrides)).toHaveLength(0);
+  });
+});
+
+describe("clinic-local date lookup", () => {
+  it.each(["Asia/Kolkata", "America/Los_Angeles", "UTC"])("finds only the selected date's breaks and removes them safely in %s", async (timezone) => {
+    const value = configuration(); value.timezone = timezone;
+    value.weeklyHours.forEach((day) => { day.intervals = [{ start: "00:00", end: "23:59" }]; });
+    await clinic.save(credentials.admin, value);
+    const [previous, first, last, next] = await database.db.insert(reservations).values([
+      { startDate: "2026-11-09", start: "23:40", endDate: date, end: "00:00", reason: "Previous day" },
+      { startDate: date, start: "00:00", endDate: date, end: "00:20", reason: "Midnight break" },
+      { startDate: date, start: "23:20", endDate: date, end: "23:40", reason: "Late break" },
+      { startDate: "2026-11-11", start: "00:00", endDate: "2026-11-11", end: "00:20", reason: "Next day" },
+    ].map((entry) => ({ doctorId: 1, kind: "block" as const, startsAt: localInstant(entry.startDate, entry.start, timezone), endsAt: localInstant(entry.endDate, entry.end, timezone), reason: entry.reason }))).returning();
+
+    const view = await service.preview(credentials.admin, date);
+    expect(view.blocks.map((block) => block.id)).toEqual([first.id, last.id]);
+    expect(view.slots).toHaveLength(69);
+    expect(view.slots[0].label).toBe("12:20 AM – 12:40 AM");
+    for (const id of [previous.id, next.id]) {
+      await expect(service.removeBreak(credentials.admin, { date, id })).rejects.toMatchObject({ statusCode: 404 });
+    }
+    await service.removeBreak(credentials.admin, { date, id: first.id });
+    expect((await service.preview(credentials.admin, date)).blocks.map((block) => block.id)).toEqual([last.id]);
+    expect((await service.preview(credentials.admin, "2026-11-09")).blocks.map((block) => block.id)).toEqual([previous.id]);
+    expect((await service.preview(credentials.admin, "2026-11-11")).blocks.map((block) => block.id)).toEqual([next.id]);
+  });
+
+  it.each(["block", "appointment"] as const)("retains a %s continuing from the previous date so slots remain unavailable", async (kind) => {
+    const value = configuration(); value.weeklyHours.forEach((day) => { day.intervals = [{ start: "00:00", end: "02:00" }]; });
+    await clinic.save(credentials.admin, value);
+    const [row] = await database.db.insert(reservations).values({ doctorId: 1, kind, startsAt: new Date("2026-11-09T23:40Z"), endsAt: new Date(`${date}T00:20Z`) }).returning();
+    const view = await service.preview(credentials.admin, date);
+    expect(view.slots).toHaveLength(5);
+    expect(view.slots[0].startsAt).toBe(`${date}T00:20:00.000Z`);
+    if (kind === "block") {
+      expect(view.blocks.map((block) => block.id)).toEqual([row.id]);
+      await service.removeBreak(credentials.admin, { date, id: row.id });
+      expect((await service.preview(credentials.admin, date)).slots).toHaveLength(6);
+    } else {
+      expect(view.blocks).toHaveLength(0);
+      await expect(service.removeBreak(credentials.admin, { date, id: row.id })).rejects.toMatchObject({ statusCode: 404 });
+    }
+  });
+
+  it.each(["2027-03-14", "2027-11-07"])("selects the right local date on the DST transition %s", async (selectedDate) => {
+    const timezone = "America/New_York", value = configuration(); value.timezone = timezone;
+    value.weeklyHours.forEach((day) => { day.intervals = [{ start: "00:00", end: "04:00" }]; });
+    await clinic.save(credentials.admin, value);
+    const previousDate = selectedDate.endsWith("03-14") ? "2027-03-13" : "2027-11-06";
+    const nextDate = selectedDate.endsWith("03-14") ? "2027-03-15" : "2027-11-08";
+    await database.db.insert(reservations).values([
+      { startDate: previousDate, start: "23:30", endDate: selectedDate, end: "00:00", reason: "Previous day" },
+      { startDate: selectedDate, start: "00:00", endDate: selectedDate, end: "00:30", reason: "Early break" },
+      { startDate: selectedDate, start: "03:00", endDate: selectedDate, end: "03:30", reason: "Later break" },
+      { startDate: nextDate, start: "00:00", endDate: nextDate, end: "00:30", reason: "Next day" },
+    ].map((entry) => ({ doctorId: 1, kind: "block" as const, startsAt: localInstant(entry.startDate, entry.start, timezone), endsAt: localInstant(entry.endDate, entry.end, timezone), reason: entry.reason })));
+    const future = createSchedulingService(database.db, access, () => new Date(`${previousDate}T12:00Z`));
+    const view = await future.preview(credentials.admin, selectedDate);
+    expect(view.blocks.map((block) => block.reason)).toEqual(["Early break", "Later break"]);
+    expect(view.slots.length).toBeGreaterThan(0);
+    expect(view.slots.every((slot) => new Date(slot.startsAt) >= localInstant(selectedDate, "00:30", timezone))).toBe(true);
+  });
+
+  it("uses the clinic timezone even when the PostgreSQL session has another timezone", async () => {
+    await clinic.save(credentials.admin, { ...configuration(), timezone: "Asia/Kolkata" });
+    await service.addBreak(credentials.admin, { date, start: "00:00", end: "00:20", reason: "Clinic midnight" });
+    const url = new URL(inject("databaseUrl")); url.pathname = "/availability_test";
+    url.searchParams.set("options", "-c timezone=Pacific/Honolulu");
+    const otherSession = createDatabase(url.toString());
+    try {
+      const reader = createSchedulingService(otherSession.db, access, clock);
+      const view = await reader.preview(credentials.admin, date);
+      expect(view.blocks.map((block) => block.reason)).toEqual(["Clinic midnight"]);
+      expect(view.blocks[0].startsAt).toBe("2026-11-09T18:30:00.000Z");
+      await reader.removeBreak(credentials.admin, { date, id: view.blocks[0].id });
+      expect((await service.preview(credentials.admin, date)).blocks).toHaveLength(0);
+    } finally { await otherSession.pool.end(); }
   });
 });
 

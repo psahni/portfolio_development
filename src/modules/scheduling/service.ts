@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, gt, lt } from "drizzle-orm";
+import { and, asc, eq, gt, lt, or, sql } from "drizzle-orm";
 import type { ApplicationDatabase } from "@/db/connection";
 import { doctorProfile } from "@/db/schema/clinic";
 import { dayOverrides, reservations } from "@/db/schema/scheduling";
@@ -28,6 +28,15 @@ function isOverlapError(error: unknown) {
   return false;
 }
 
+function reservationMatchesDate(date: string, timezone: string) {
+  const { start: midnight } = dayBounds(date, timezone);
+  // Compare the clinic-local date, not the UTC date or the database session's date.
+  const startsOnDate = eq(sql<string>`(${reservations.startsAt} AT TIME ZONE ${timezone})::date`, date);
+  // A reservation from an earlier date may still occupy the selected day.
+  const continuesIntoDate = and(lt(reservations.startsAt, midnight), gt(reservations.endsAt, midnight));
+  return or(startsOnDate, continuesIntoDate);
+}
+
 export function createSchedulingService(db: ApplicationDatabase, access: AdminAccess, clock = () => new Date()) {
   async function preview(headers: Headers, selected?: string): Promise<AvailabilityView> {
     await access.requireAdminAccess(headers);
@@ -37,9 +46,10 @@ export function createSchedulingService(db: ApplicationDatabase, access: AdminAc
       const date = dateSchema.parse(selected ?? today);
       const empty: AvailabilityView = { configured: false, date, today, maxOverrideDate: addDays(today, 365), timezone, weeklyHours: [], effectiveHours: [], override: null, blocks: [], slots: [], outsideWindow: false };
       if (!config) return empty;
-      const bounds = dayBounds(date, timezone);
       const [override] = await tx.select().from(dayOverrides).where(and(eq(dayOverrides.doctorId, 1), eq(dayOverrides.date, date)));
-      const occupied = await tx.select().from(reservations).where(and(eq(reservations.doctorId, 1), lt(reservations.startsAt, bounds.end), gt(reservations.endsAt, bounds.start))).orderBy(asc(reservations.startsAt));
+      const occupied = await tx.select().from(reservations)
+        .where(and(eq(reservations.doctorId, 1), reservationMatchesDate(date, timezone)))
+        .orderBy(asc(reservations.startsAt));
       return {
         ...empty, configured: true, override: override ?? null,
         weeklyHours: effectiveHours(config, date, null), effectiveHours: effectiveHours(config, date, override ?? null),
@@ -99,8 +109,10 @@ export function createSchedulingService(db: ApplicationDatabase, access: AdminAc
     await access.requireAdminAccess(headers);
     const value = removeBreakSchema.parse(input);
     await write(value.date, async (tx, config) => {
-      const bounds = dayBounds(value.date, config.timezone);
-      const removed = await tx.delete(reservations).where(and(eq(reservations.id, value.id), eq(reservations.doctorId, 1), eq(reservations.kind, "block"), lt(reservations.startsAt, bounds.end), gt(reservations.endsAt, bounds.start))).returning({ id: reservations.id });
+      const removed = await tx.delete(reservations).where(and(
+        eq(reservations.id, value.id), eq(reservations.doctorId, 1), eq(reservations.kind, "block"),
+        reservationMatchesDate(value.date, config.timezone),
+      )).returning({ id: reservations.id });
       if (!removed.length) throw new SchedulingError(404, "That break no longer exists. Reload the day.");
     });
   }
