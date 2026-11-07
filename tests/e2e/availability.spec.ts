@@ -101,6 +101,10 @@ test("multiple daily breaks persist, reject overlaps and can be removed independ
   await expect(page.getByRole("list", { name: "Saved breaks" }).getByRole("listitem")).toHaveCount(2);
   await expect(slots(page)).toHaveCount(7);
   await apply(page, "closed");
+  await expect(page.getByText(/The clinic is closed on this date, so one-off breaks do not apply/)).toBeVisible();
+  await expect(page.getByLabel("Break starts", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "Saved breaks" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Apply schedule", exact: true })).toBeDisabled();
   await apply(page, "weekly", "Weekly hours restored. Existing breaks remain blocked.");
   await expect(slots(page)).toHaveCount(7);
   await page.reload();
@@ -141,7 +145,73 @@ test("unloaded dates disable edits and failed saves can be retried", async ({ pa
   const other = new Date(`${selected}T12:00Z`); other.setUTCDate(other.getUTCDate() + 1);
   await page.getByLabel("Choose date", { exact: true }).fill(other.toISOString().slice(0, 10));
   await expect(page.getByRole("button", { name: "Apply schedule", exact: true })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Add break", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Add break", exact: true })).toHaveCount(0);
+});
+
+test("Apply schedule tracks dropdown, special-hours and note edits and resets on save or revert", async ({ page }) => {
+  await prepare(page);
+  const applyButton = page.getByRole("button", { name: "Apply schedule", exact: true });
+  const mode = page.getByLabel("Schedule for this day", { exact: true });
+  await expect(applyButton).toBeDisabled();
+  await page.getByLabel("Break starts", { exact: true }).fill("10:00");
+  await expect(applyButton).toBeDisabled();
+  await mode.selectOption("closed");
+  await expect(applyButton).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Add break", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Apply your schedule changes before managing one-off breaks.", { exact: true })).toBeVisible();
+  await mode.selectOption("weekly");
+  await expect(applyButton).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Add break", exact: true })).toBeVisible();
+  await apply(page, "custom");
+  await expect(applyButton).toBeDisabled();
+  await page.getByLabel("Special closing time 1", { exact: true }).fill("11:00");
+  await expect(applyButton).toBeEnabled();
+  await page.getByLabel("Special closing time 1", { exact: true }).fill("12:00");
+  await expect(applyButton).toBeDisabled();
+  await page.getByLabel("Special closing time 1", { exact: true }).fill("11:00");
+  await applyButton.click();
+  await expect(page.getByRole("status")).toHaveText("Day schedule saved.");
+  await expect(applyButton).toBeDisabled();
+  await page.getByLabel("Schedule note (optional)", { exact: true }).fill("Updated hours");
+  await expect(applyButton).toBeEnabled();
+  await page.getByLabel("Schedule note (optional)", { exact: true }).fill("");
+  await expect(applyButton).toBeDisabled();
+  await page.getByLabel("Schedule note (optional)", { exact: true }).fill("Updated hours");
+  await applyButton.click();
+  await expect(applyButton).toBeDisabled();
+  await page.reload();
+  await expect(mode).toHaveValue("custom");
+  await expect(page.getByLabel("Special closing time 1", { exact: true })).toHaveValue("11:00");
+  await expect(page.getByLabel("Schedule note (optional)", { exact: true })).toHaveValue("Updated hours");
+  await expect(applyButton).toBeDisabled();
+});
+
+test("a normally closed weekday hides saved break controls until reopened", async ({ page }, testInfo) => {
+  const date = await prepare(page);
+  await page.getByLabel("Break starts", { exact: true }).fill("10:00");
+  await page.getByLabel("Break ends", { exact: true }).fill("10:20");
+  await page.getByRole("button", { name: "Add break", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Break added.");
+  const before = (await (await page.request.get(`/api/admin/availability?date=${date}`)).json()).availability;
+  const settings = (await (await page.request.get("/api/admin/settings")).json()).settings;
+  const weekday = (new Date(`${date}T12:00Z`).getUTCDay() + 6) % 7;
+  const savedHours = settings.weeklyHours[weekday].intervals;
+  settings.weeklyHours[weekday].intervals = [];
+  const headers = { origin: new URL(page.url()).origin };
+  expect((await page.request.put("/api/admin/settings", { headers, data: settings })).status()).toBe(200);
+  await page.reload();
+  await expect(page.getByText(/The clinic is closed on this date, so one-off breaks do not apply/)).toBeVisible();
+  await expect(page.getByLabel("Break starts", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "Saved breaks" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Apply schedule", exact: true })).toBeDisabled();
+  await page.screenshot({ path: testInfo.outputPath("closed-day-breaks.png"), fullPage: true, animations: "disabled" });
+  settings.weeklyHours[weekday].intervals = savedHours;
+  expect((await page.request.put("/api/admin/settings", { headers, data: settings })).status()).toBe(200);
+  await page.reload();
+  await expect(page.getByRole("list", { name: "Saved breaks" }).getByRole("listitem")).toHaveCount(1);
+  const reopened = (await (await page.request.get(`/api/admin/availability?date=${date}`)).json()).availability;
+  expect(reopened.blocks).toEqual(before.blocks);
+  await expect(slots(page)).toHaveCount(8);
 });
 
 test("availability requires sign-in and clinic setup", async ({ page }) => {
