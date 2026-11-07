@@ -96,16 +96,35 @@ test("calendar navigation, refresh and reload preserve date/view and show new bo
   await expect(page).toHaveURL(new RegExp(`date=${date}`));
 });
 
-test("closed days hide availability but retain existing booked times", async ({ page }) => {
+test("closed days hide saved breaks, retain booked times and restore breaks when reopened", async ({ page }) => {
   const date = await prepare(page);
-  expect((await page.request.put("/api/admin/availability", { headers: { origin: new URL(page.url()).origin }, data: { date, mode: "closed" } })).status()).toBe(200);
+  const origin = new URL(page.url()).origin;
+  for (const start of ["10:00", "11:00"]) {
+    expect((await page.request.post("/api/admin/availability", { headers: { origin }, data: { date, start, end: start.replace(":00", ":20"), reason: "Saved break" } })).status()).toBe(200);
+  }
   await showDate(page, date);
   const slots = page.getByRole("list", { name: `Slots for ${date}`, exact: true });
+  await expect(slots.locator('[data-kind="block"]')).toHaveCount(2);
+  expect((await page.request.put("/api/admin/availability", { headers: { origin: new URL(page.url()).origin }, data: { date, mode: "closed" } })).status()).toBe(200);
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(slots.getByRole("listitem")).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "Calendar legend" })).toContainText("Break 0");
+  await page.getByRole("button", { name: "Day", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Day calendar", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(slots.getByRole("listitem")).toHaveCount(0);
+  await expect(page.getByText("Clinic closed.", { exact: true })).toBeVisible();
   await seedBooked(date);
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(slots.locator('[data-kind="appointment"]')).toHaveCount(1);
+  await expect(slots.locator('[data-kind="block"]')).toHaveCount(0);
   await expect(slots.locator('[data-kind="available"]')).toHaveCount(0);
+  expect((await page.request.put("/api/admin/availability", { headers: { origin }, data: { date, mode: "weekly" } })).status()).toBe(200);
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(slots.locator('[data-kind="block"]')).toHaveCount(2);
+  await expect(slots.locator('[data-kind="available"]')).toHaveCount(6);
+  await expect(slots.locator('[data-kind="appointment"]')).toHaveCount(1);
+  await expect(page.getByRole("list", { name: "Calendar legend" })).toContainText("Break 2");
 });
 
 test("failed calendar loads preserve displayed data and allow retry", async ({ page }) => {

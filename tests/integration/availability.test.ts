@@ -269,6 +269,32 @@ describe("clinic-local date lookup", () => {
 });
 
 describe("doctor calendar", () => {
+  it.each(["holiday", "weekly"])("hides saved breaks on a closed %s and restores them on reopening", async (closure) => {
+    await service.addBreak(credentials.admin, { date, start: "10:00", end: "10:20", reason: "First break" });
+    await service.addBreak(credentials.admin, { date, start: "11:00", end: "11:20", reason: "Second break" });
+    const saved = (await service.calendar(credentials.admin, date, "day")).days[0].events.filter((event) => event.kind === "block");
+    expect(saved).toHaveLength(2);
+    if (closure === "holiday") await service.saveOverride(credentials.admin, { date, mode: "closed" });
+    else {
+      const value = configuration(); value.weeklyHours[1].intervals = [];
+      await clinic.save(credentials.admin, value);
+    }
+    for (const mode of ["day", "week"]) {
+      const day = (await service.calendar(credentials.admin, date, mode)).days.find((day) => day.date === date)!;
+      expect(day.hours).toEqual([]); expect(day.events).toEqual([]);
+    }
+    expect(await database.db.select().from(reservations).where(eq(reservations.kind, "block"))).toHaveLength(2);
+    // Existing/imported appointments must still be visible on a closed day.
+    const booked = await appointment();
+    const closed = (await service.calendar(credentials.admin, date, "day")).days[0];
+    expect(closed.events.map((event) => event.id)).toEqual([booked.id]);
+    if (closure === "holiday") await service.saveOverride(credentials.admin, { date, mode: "weekly" });
+    else await clinic.save(credentials.admin, configuration());
+    const reopened = (await service.calendar(credentials.admin, date, "day")).days[0];
+    expect(reopened.events.filter((event) => event.kind === "block")).toEqual(saved);
+    expect(reopened.events.filter((event) => event.kind === "available")).toHaveLength(6);
+  });
+
   it("shows available, booked and break times chronologically without creating reservations", async () => {
     const booked = await appointment();
     await service.addBreak(credentials.admin, { date, start: "10:00", end: "10:20", reason: "Personal work" });

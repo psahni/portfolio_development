@@ -22,12 +22,16 @@ export function buildCalendarDay(
   reservations: CalendarReservation[], now: Date,
 ): CalendarDay {
   const bounds = dayBounds(date, config.timezone);
+  const hours = effectiveHours(config, date, override);
   const occupied = reservations.filter((row) => row.startsAt < bounds.end && row.endsAt > bounds.start);
   const available: CalendarEvent[] = generateSlots(config, date, override, occupied, now).map((slot) => ({
     id: `available:${slot.startsAt}`, kind: "available", startsAt: slot.startsAt, endsAt: slot.endsAt,
     label: slot.label, note: "", continuesFromPreviousDay: false, continuesToNextDay: false,
   }));
-  const booked: CalendarEvent[] = occupied.map((row) => ({
+  // Closed days hide breaks in the calendar; saved reservations remain intact for reopening.
+  // Actual appointments remain visible so a closure never conceals booked patients.
+  const visibleOccupancy = occupied.filter((row) => hours.length > 0 || row.kind === "appointment");
+  const booked: CalendarEvent[] = visibleOccupancy.map((row) => ({
     id: row.id, kind: row.kind, startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString(),
     label: `${instantLabel(row.startsAt, config.timezone, date)} – ${instantLabel(row.endsAt, config.timezone, date)}`,
     note: row.kind === "block" ? row.reason ?? "" : "",
@@ -35,7 +39,7 @@ export function buildCalendarDay(
     continuesToNextDay: row.endsAt > bounds.end,
   }));
   return {
-    date, hours: effectiveHours(config, date, override),
+    date, hours,
     events: [...available, ...booked].sort((a, b) => a.startsAt.localeCompare(b.startsAt)),
     outsideWindow: date < clinicDate(now, config.timezone) || date > addDays(clinicDate(now, config.timezone), config.bookingHorizonDays),
   };
