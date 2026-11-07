@@ -38,28 +38,101 @@ export function effectiveHours(config: ClinicConfiguration, date: string, overri
   return override?.mode === "custom" ? override.intervals : config.weeklyHours.find((day) => day.day === Temporal.PlainDate.from(date).dayOfWeek - 1)!.intervals;
 }
 
-export function generateSlots(config: ClinicConfiguration, date: string, override: DateOverride | null, occupied: Occupancy[], now: Date): Slot[] {
-  const earliest = now.getTime() + config.minLeadMinutes * 60_000;
-  const latest = zoned(now, config.timezone).add({ days: config.bookingHorizonDays }).epochMilliseconds;
-  if (date < clinicDate(now, config.timezone) || date > clinicDate(new Date(latest), config.timezone)) return [];
-  const slots: Slot[] = [];
-  const stride = config.bufferBeforeMinutes + config.durationMinutes + config.bufferAfterMinutes;
-  const windows = [...effectiveHours(config, date, override)].sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
-  for (const window of windows) {
-    for (let start = toMinutes(window.start) + config.bufferBeforeMinutes; start + config.durationMinutes + config.bufferAfterMinutes <= toMinutes(window.end); start += stride) {
-      const end = start + config.durationMinutes;
-      let occupiedStart: Date, occupiedEnd: Date, visitStart: Date, visitEnd: Date;
-      try {
-        occupiedStart = localInstant(date, toTime(start - config.bufferBeforeMinutes), config.timezone);
-        occupiedEnd = localInstant(date, toTime(end + config.bufferAfterMinutes), config.timezone);
-        visitStart = localInstant(date, toTime(start), config.timezone);
-        visitEnd = localInstant(date, toTime(end), config.timezone);
-      } catch { continue; } // Never silently shift or duplicate a DST-gap/fold appointment.
-      if (visitEnd.getTime() - visitStart.getTime() !== config.durationMinutes * 60_000 || occupiedEnd.getTime() - occupiedStart.getTime() !== stride * 60_000) continue;
-      if (visitStart.getTime() < earliest || visitStart.getTime() > latest) continue;
-      if (occupied.some((row) => row.startsAt < occupiedEnd && row.endsAt > occupiedStart)) continue;
-      slots.push({ startsAt: visitStart.toISOString(), endsAt: visitEnd.toISOString(), occupiedStart: occupiedStart.toISOString(), occupiedEnd: occupiedEnd.toISOString(), label: `${clockLabel(toTime(start))} – ${clockLabel(toTime(end))}` });
+type SlotTimes = {
+  visitStart: Date;
+  visitEnd: Date;
+  occupiedStart: Date;
+  occupiedEnd: Date;
+};
+
+function getBookingWindow(config: ClinicConfiguration, now: Date) {
+  // Calendar days preserve the clinic's local time across daylight-saving changes.
+  const latestStartMs = zoned(now, config.timezone).add({ days: config.bookingHorizonDays }).epochMilliseconds;
+  return {
+    firstDate: clinicDate(now, config.timezone),
+    lastDate: clinicDate(new Date(latestStartMs), config.timezone),
+    earliestStartMs: now.getTime() + config.minLeadMinutes * 60_000,
+    latestStartMs,
+  };
+}
+
+function getCandidateStartMinutes(hours: TimeInterval[], config: ClinicConfiguration): number[] {
+  const { durationMinutes, bufferBeforeMinutes, bufferAfterMinutes } = config;
+  const spacingMinutes = bufferBeforeMinutes + durationMinutes + bufferAfterMinutes;
+  const sortedHours = [...hours].sort((a, b) => toMinutes(a.start) - toMinutes(b.start));
+  const starts: number[] = [];
+
+  for (const interval of sortedHours) {
+    const firstStart = toMinutes(interval.start) + bufferBeforeMinutes;
+    const lastStart = toMinutes(interval.end) - durationMinutes - bufferAfterMinutes;
+    for (let start = firstStart; start <= lastStart; start += spacingMinutes) {
+      starts.push(start);
     }
+  }
+  return starts;
+}
+
+function resolveSlotTimes(date: string, startMinute: number, config: ClinicConfiguration): SlotTimes | null {
+  const endMinute = startMinute + config.durationMinutes;
+  try {
+    return {
+      occupiedStart: localInstant(date, toTime(startMinute - config.bufferBeforeMinutes), config.timezone),
+      occupiedEnd: localInstant(date, toTime(endMinute + config.bufferAfterMinutes), config.timezone),
+      visitStart: localInstant(date, toTime(startMinute), config.timezone),
+      visitEnd: localInstant(date, toTime(endMinute), config.timezone),
+    };
+  } catch {
+    // Skip ambiguous/nonexistent clock times instead of moving or duplicating a slot.
+    return null;
+  }
+}
+
+function hasExpectedDuration(times: SlotTimes, config: ClinicConfiguration): boolean {
+  const visitDurationMs = times.visitEnd.getTime() - times.visitStart.getTime();
+  const occupiedDurationMs = times.occupiedEnd.getTime() - times.occupiedStart.getTime();
+  const occupiedMinutes = config.bufferBeforeMinutes + config.durationMinutes + config.bufferAfterMinutes;
+  // Valid endpoints can still straddle a clock change that alters the elapsed duration.
+  return visitDurationMs === config.durationMinutes * 60_000 && occupiedDurationMs === occupiedMinutes * 60_000;
+}
+
+function overlapsOccupiedTime(times: SlotTimes, occupied: Occupancy[]): boolean {
+  // Touching endpoints are allowed; only intersecting occupied ranges conflict.
+  return occupied.some((reservation) => reservation.startsAt < times.occupiedEnd && reservation.endsAt > times.occupiedStart);
+}
+
+function formatSlot(times: SlotTimes, startMinute: number, durationMinutes: number): Slot {
+  const startLabel = clockLabel(toTime(startMinute));
+  const endLabel = clockLabel(toTime(startMinute + durationMinutes));
+  return {
+    startsAt: times.visitStart.toISOString(),
+    endsAt: times.visitEnd.toISOString(),
+    occupiedStart: times.occupiedStart.toISOString(),
+    occupiedEnd: times.occupiedEnd.toISOString(),
+    label: `${startLabel} – ${endLabel}`,
+  };
+}
+
+export function generateSlots(
+  config: ClinicConfiguration,
+  date: string,
+  override: DateOverride | null,
+  occupied: Occupancy[],
+  now: Date,
+): Slot[] {
+  const bookingWindow = getBookingWindow(config, now);
+  if (date < bookingWindow.firstDate || date > bookingWindow.lastDate) return [];
+
+  const hours = effectiveHours(config, date, override);
+  const slots: Slot[] = [];
+  for (const startMinute of getCandidateStartMinutes(hours, config)) {
+    const times = resolveSlotTimes(date, startMinute, config);
+    if (!times || !hasExpectedDuration(times, config)) continue;
+
+    const visitStartMs = times.visitStart.getTime();
+    if (visitStartMs < bookingWindow.earliestStartMs || visitStartMs > bookingWindow.latestStartMs) continue;
+    if (overlapsOccupiedTime(times, occupied)) continue;
+
+    slots.push(formatSlot(times, startMinute, config.durationMinutes));
   }
   return slots;
 }
