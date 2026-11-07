@@ -82,7 +82,7 @@ test("special hours replace only the selected day and reject overlapping interva
   expect((await response.json()).availability.slots).toHaveLength(9);
 });
 
-test("personal breaks survive holiday removal, reject overlaps and can be removed", async ({ page }) => {
+test("multiple daily breaks persist, reject overlaps and can be removed independently", async ({ page }) => {
   await prepare(page);
   await page.getByLabel("Break starts", { exact: true }).fill("09:20");
   await page.getByLabel("Break ends", { exact: true }).fill("09:40");
@@ -93,12 +93,29 @@ test("personal breaks survive holiday removal, reject overlaps and can be remove
   await page.getByRole("button", { name: "Add break", exact: true }).click();
   await expect(page.getByRole("main").getByRole("alert")).toContainText("overlaps an existing break");
   await expect(page.getByRole("list", { name: "Saved breaks" }).getByRole("listitem")).toHaveCount(1);
+  await page.getByLabel("Break starts", { exact: true }).fill("11:00");
+  await page.getByLabel("Break ends", { exact: true }).fill("11:20");
+  await page.getByLabel("Break note (optional)", { exact: true }).fill("Second break");
+  await page.getByRole("button", { name: "Add break", exact: true }).click();
+  await expect(page.getByRole("status")).toHaveText("Break added.");
+  await expect(page.getByRole("list", { name: "Saved breaks" }).getByRole("listitem")).toHaveCount(2);
+  await expect(slots(page)).toHaveCount(7);
   await apply(page, "closed");
   await apply(page, "weekly", "Weekly hours restored. Existing breaks remain blocked.");
-  await expect(slots(page)).toHaveCount(8);
+  await expect(slots(page)).toHaveCount(7);
   await page.reload();
   await expect(page.getByText("Personal work", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /^Remove break / }).click();
+  await expect(page.getByText("Second break", { exact: true })).toBeVisible();
+  const breaks = page.getByRole("list", { name: "Saved breaks" });
+  await expect(breaks.getByRole("listitem")).toHaveCount(2);
+  await breaks.getByRole("listitem").filter({ hasText: "Personal work" }).getByRole("button").click();
+  await expect(page.getByRole("status")).toHaveText("Break removed.");
+  await expect(slots(page)).toHaveCount(8);
+  await expect(breaks.getByRole("listitem")).toHaveCount(1);
+  await expect(breaks).toContainText("Second break");
+  await expect(slots(page).filter({ hasText: "9:20 AM – 9:40 AM" })).toHaveCount(1);
+  await expect(slots(page).filter({ hasText: "11:00 AM – 11:20 AM" })).toHaveCount(0);
+  await breaks.getByRole("button", { name: /^Remove break / }).click();
   await expect(page.getByRole("status")).toHaveText("Break removed.");
   await expect(slots(page)).toHaveCount(9);
 });

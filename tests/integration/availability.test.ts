@@ -101,6 +101,22 @@ describe("persisted availability and transaction rules", () => {
     await service.removeBreak(credentials.admin, { date, id: block.id });
     expect((await service.preview(credentials.admin, date)).slots).toHaveLength(9);
   });
+  it("persists multiple breaks in chronological order and removes only the selected break", async () => {
+    await service.addBreak(credentials.admin, { date, start: "11:00", end: "11:20", reason: "Personal work" });
+    await service.addBreak(credentials.admin, { date, start: "09:20", end: "09:40", reason: "Morning break" });
+    const view = await service.preview(credentials.admin, date);
+    expect(view.blocks.map((block) => block.reason)).toEqual(["Morning break", "Personal work"]);
+    expect(view.slots).toHaveLength(7);
+    expect(await database.db.select().from(reservations)).toHaveLength(2);
+    await expect(service.addBreak(credentials.admin, { date, start: "11:10", end: "11:30" })).rejects.toMatchObject({ statusCode: 409 });
+    await service.removeBreak(credentials.admin, { date, id: view.blocks[0].id });
+    const remaining = await service.preview(credentials.admin, date);
+    expect(remaining.blocks).toEqual([view.blocks[1]]);
+    expect(remaining.slots).toHaveLength(8);
+    expect(remaining.slots.some((slot) => slot.startsAt === `${date}T09:20:00.000Z`)).toBe(true);
+    expect(remaining.slots.some((slot) => slot.startsAt === `${date}T11:00:00.000Z`)).toBe(false);
+    expect((await service.preview(credentials.admin, "2026-11-11")).slots).toHaveLength(9);
+  });
   it("serializes simultaneous conflicting breaks and retains only one", async () => {
     const value = { date, start: "10:00", end: "11:00" };
     const results = await Promise.allSettled([service.addBreak(credentials.admin, value), service.addBreak(credentials.admin, value)]);

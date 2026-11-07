@@ -100,7 +100,7 @@ export function AvailabilityEditor({ initial }: { initial: AvailabilityView }) {
         </fieldset>
       </form>
       <section className={cardClass} aria-labelledby="one-off-breaks">
-        <h2 id="one-off-breaks" className="text-lg font-semibold">One-off breaks</h2><p className="mt-2 mb-5 text-sm text-muted-foreground">Block personal-work time. Breaks stay blocked until removed, even after restoring weekly hours.</p>
+        <h2 id="one-off-breaks" className="text-lg font-semibold">One-off breaks</h2><p className="mt-2 mb-5 text-sm text-muted-foreground">Add each break using Add break, then repeat for more breaks on this day. Each stays blocked until removed, even after restoring weekly hours.</p>
         <form onSubmit={addBreak} noValidate><fieldset disabled={pending || mustLoad} className="space-y-4">
           <div className="grid grid-cols-2 gap-3"><div><label htmlFor="break-start" className="text-sm font-medium">Break starts</label><input id="break-start" type="time" value={breakStart} onChange={(event) => setBreakStart(event.target.value)} className={inputClass} /></div><div><label htmlFor="break-end" className="text-sm font-medium">Break ends</label><input id="break-end" type="time" value={breakEnd} onChange={(event) => setBreakEnd(event.target.value)} className={inputClass} /></div></div>
           <div><label htmlFor="break-note" className="text-sm font-medium">Break note (optional)</label><input id="break-note" maxLength={160} value={breakReason} onChange={(event) => setBreakReason(event.target.value)} className={inputClass} /></div><Button type="submit" variant="outline">Add break</Button>
