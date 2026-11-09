@@ -9,13 +9,13 @@ export default function Home() {
     <main className="mx-auto flex min-h-screen max-w-7xl flex-col px-6 md:px-12">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b py-5">
         <Brand />
-        <Button asChild variant="outline" size="sm"><Link href="/admin">Clinic sign in <ArrowUpRight aria-hidden="true" /></Link></Button>
+        <div className="flex items-center gap-2"><Button asChild variant="outline" size="sm"><Link href="/login">Patient sign in</Link></Button><Button asChild variant="outline" size="sm"><Link href="/admin">Clinic sign in <ArrowUpRight aria-hidden="true" /></Link></Button></div>
       </header>
       <section className="max-w-4xl py-20 md:py-28">
         <p className="ui-eyebrow mb-6 !text-primary">A little less waiting. A little more care.</p>
         <h1 className="text-4xl leading-[1.08] font-semibold tracking-[-0.055em] sm:text-6xl md:text-7xl">Care starts with<br /><span className="text-primary">a simpler appointment.</span></h1>
-        <p className="mt-7 max-w-xl text-base leading-8 text-muted-foreground">We’re preparing a simpler way to connect with your clinic. Online booking is coming soon. Clinic staff can sign in to their workspace.</p>
-        <Button asChild className="mt-8"><a href="#what-to-expect">What to expect <ArrowUpRight aria-hidden="true" /></a></Button>
+        <p className="mt-7 max-w-xl text-base leading-8 text-muted-foreground">Sign in to view your appointments and booking status. Online booking is coming next. Clinic staff can sign in to their workspace.</p>
+        <div className="mt-8 flex flex-wrap items-center gap-3"><Button asChild><Link href="/login">My appointments <ArrowUpRight aria-hidden="true" /></Link></Button><Button asChild variant="outline"><a href="#what-to-expect">What to expect</a></Button></div>
       </section>
       <section id="what-to-expect" aria-label="What to expect" className="mb-16 grid gap-4 scroll-mt-8 md:grid-cols-3">
         {[

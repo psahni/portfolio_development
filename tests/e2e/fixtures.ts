@@ -6,9 +6,13 @@ export const test = base.extend<{ resetClinic: void }>({
   // Each browser case owns its settings/overrides; never fall back to a developer database URL.
   resetClinic: [async ({}, provide) => {
     const connectionString = process.env.NUVORTIQ_E2E_DATABASE_URL;
-    if (!connectionString) throw new Error("Isolated browser database was not configured.");
+    if (!connectionString || new URL(connectionString).pathname !== "/nuvortiq_browser") throw new Error("Isolated browser database was not configured.");
     const client = new Client({ connectionString });
-    try { await client.connect(); await client.query("DELETE FROM clinic_settings WHERE id = 1"); }
+    try {
+      await client.connect();
+      await client.query("DELETE FROM booking_requests"); await client.query("DELETE FROM booking_audit");
+      await client.query("DELETE FROM appointments"); await client.query("DELETE FROM clinic_settings WHERE id = 1");
+    }
     finally { await client.end(); }
     await provide();
   }, { auto: true }],

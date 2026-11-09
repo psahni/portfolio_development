@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import EmbeddedPostgres from "embedded-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { createDatabase } from "../../src/db/connection";
-import { staffAccess, staffUser } from "../../src/db/schema/auth";
+import { patientUser, staffAccess, staffUser } from "../../src/db/schema/auth";
 
 async function unusedPort() {
   const server = createServer();
@@ -65,6 +65,7 @@ export default async function setup() {
     const id = randomUUID();
     await database.db.insert(staffUser).values({ id, name: "Synthetic Staff", email: "staff@example.test" });
     await database.db.insert(staffAccess).values({ userId: id, role: "staff" });
+    await database.db.insert(patientUser).values(["patient@example.test", "other@example.test", "doctor@example.test"].map((email) => ({ id: randomUUID(), name: "Synthetic Patient", email })));
 
     // The test server gets its own source copy, .next directory and synthetic database.
     const source = join(folder, "app");

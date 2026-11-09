@@ -1,6 +1,6 @@
 # Nuvortiq Smart Booking — MVP Architecture
 
-**Status: native MVP; patient-booking-first delivery selected. Foundation, clinic login, settings and availability are implemented; booking follows next.**
+**Status: native MVP; patient-booking-first delivery selected. Foundation, clinic login, scheduling and the shared booking service are implemented. Patient sign-in/listing is #10; hosted booking follows in #11.**
 
 ## Scope and stack
 
@@ -28,7 +28,7 @@ Email codes are expiring and single-use. Protect PIN hashes using the server sec
 
 For local testing only, `AUTH_TEST_MODE=true` enables `0000` for existing active accounts. Email-code users must still request a fresh code; no email is sent in this mode. Admin test login uses `0000` instead of the PIN. Production/non-loopback origins reject test mode. It cannot create users, reset PINs or bypass disabled accounts/lockout.
 
-M1 isolates patient and staff identities in separate PostgreSQL auth schemas, endpoint paths and cookies. The [auth revision](specs/AUTH_CODE_REVISION.md) adds bootstrap, access checks and the shared clinic login/workspace. Only required staff login/logout handlers are mounted; staff codes currently use localhost test mode. Staff management, PIN-change screens, real email and patient login remain future tasks; advanced shared abuse controls are deferred to M6.
+M1 isolates patient and staff identities in separate PostgreSQL auth schemas, endpoint paths and cookies. The [auth revision](specs/AUTH_CODE_REVISION.md) adds bootstrap, access checks and the shared clinic login/workspace. Only required patient/staff login/logout handlers are mounted; codes currently use localhost test mode. Patient listings use explicit account ownership. Staff management, PIN-change screens, real email and booking forms remain future tasks; advanced shared abuse controls are deferred to M6.
 
 ## Booking and cancellation
 

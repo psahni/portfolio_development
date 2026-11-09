@@ -2,15 +2,15 @@
 
 Native booking for one clinic, one branch and one doctor. The selected patient-booking-first approach is delivered through small, reviewed tasks.
 
-**Current delivery: shared clinic login (M2.2).** `/admin` supports admin email + PIN and staff email-code login, leading to a protected `/admin/workspace` with sign out. Staff codes use explicit localhost test mode for this task; a real email provider is still pending. Patient booking, staff management and PIN-change screens are later tasks. Only the required staff login/logout endpoints are mounted.
+**Current delivery:** `/admin` supports clinic sign-in; `/login` supports patient email codes and `/appointments` shows only that patient's linked bookings. Real email delivery and booking forms are still pending.
 
-**Testing now:** Follow the [testing steps](docs/TESTING.md). The home page links to clinic sign-in; booking remains pending.
+**Testing now:** Follow the [testing steps](docs/TESTING.md). With localhost `AUTH_TEST_MODE=true`, run `pnpm db:seed-test-patient`, then sign in as `patient@example.test`: request a code and enter `0000`. This explicit command creates only a synthetic patient in a local database; it does not verify the email or create a session.
 
 **Clinic setup (#6):** After migration, sign in as admin and open **Clinic settings** in the workspace. Save clinic/doctor details, select a timezone, set appointment rules and add weekly opening intervals. Closed days have no intervals; settings persist across restarts.
 
-**Availability (#7):** Open **Availability** in the workspace to preview slots, mark a holiday, set special hours for one date or add/remove a personal break. Restoring weekly hours keeps separately saved breaks. Previewing does not reserve a slot; booking follows in the next task.
+**Availability (#7):** Open **Availability** in the workspace to preview slots, mark a holiday, set special hours for one date or add/remove a personal break. Restoring weekly hours keeps separately saved breaks. Previewing does not reserve a slot; booking forms follow separately.
 
-**Doctor calendar (#20):** Open **Calendar** for Day/Week views: green Available, red Booked and amber Break cards, with text labels. Navigate dates or refresh to see current data in the clinic timezone. This view reads existing reservations; booking creation is the next task.
+**Doctor calendar (#20):** Open **Calendar** for Day/Week views: green Available, red Booked and amber Break cards, with text labels. Navigate dates or refresh to see current data in the clinic timezone. This view reads existing reservations; the shared booking service saves occupancy, while booking forms follow separately.
 
 ## Run locally
 
