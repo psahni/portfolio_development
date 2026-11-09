@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1660" height="1620" viewBox="0 0 1660 1620" role="img" aria-labelledby="title description">
+<title id="title">Nuvortiq shared booking flow</title>
+<desc id="description">Confirm booking, lock the doctor's schedule, recheck booking access, look up retries before availability, save atomically and commit. Valid retries return the existing confirmation; denied access, occupied slots and failed saves do not create appointments.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 8 5 L 1 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<rect width="100%" height="100%" fill="#F8FAF9"/>
+<g font-family="Comic Sans MS, Chalkboard SE, Segoe Print, sans-serif"><text x="64" y="38" fill="#176F64" font-size="15" text-anchor="start"><tspan x="64" dy="15">NUVORTIQ  /  HOW BOOKING WORKS</tspan></text>
+<text x="64" y="77" fill="#183B37" font-size="37" text-anchor="start"><tspan x="64" dy="37">One slot. One confirmed booking.</tspan></text>
+<text x="64" y="139" fill="#687D78" font-size="20" text-anchor="start"><tspan x="64" dy="20">A safe path from Confirm to confirmation — even when requests arrive together.</tspan></text>
+<rect x="530" y="277" width="580" height="1115" rx="16" fill="#F1F7F4" stroke="#C8DAD2" stroke-width="1.6" stroke-dasharray="8 7"/>
+<text x="555" y="296" fill="#176F64" font-size="14" text-anchor="start"><tspan x="555" dy="14">ONE POSTGRESQL TRANSACTION</tspan></text>
+<rect x="640" y="194" width="360" height="55" rx="16" fill="#183B37" stroke="#183B37" stroke-width="1.6"/>
+<path d="M 658 196 Q 820.0 193 982 195" fill="none" stroke="#183B37" stroke-width="0.65" opacity=".35"/>
+<text x="820.0" y="205" fill="#FFFFFF" font-size="23" text-anchor="middle"><tspan x="820.0" dy="23">Confirm booking</tspan></text>
+<polyline points="820,250 820,340" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="590" y="350" width="460" height="108" rx="16" fill="white" stroke="#176F64" stroke-width="1.6"/>
+<path d="M 608 352 Q 820.0 349 1032 351" fill="none" stroke="#176F64" stroke-width="0.65" opacity=".35"/>
+<ellipse cx="633" cy="394" rx="21" ry="21" fill="#E5F6ED" stroke="#176F64" stroke-width="1.4"/>
+<text x="633.0" y="379" fill="#176F64" font-size="22" text-anchor="middle"><tspan x="633.0" dy="22">1</tspan></text>
+<text x="674" y="367" fill="#183B37" font-size="23" text-anchor="start"><tspan x="674" dy="23">Lock the doctor’s schedule</tspan></text>
+<text x="674" y="402" fill="#687D78" font-size="16" text-anchor="start"><tspan x="674" dy="16">Take the doctor-row lock.</tspan><tspan x="674" dy="21.6">Other writers wait their turn.</tspan></text>
+<rect x="590" y="510" width="460" height="108" rx="16" fill="white" stroke="#176F64" stroke-width="1.6"/>
+<path d="M 608 512 Q 820.0 509 1032 511" fill="none" stroke="#176F64" stroke-width="0.65" opacity=".35"/>
+<ellipse cx="633" cy="554" rx="21" ry="21" fill="#E5F6ED" stroke="#176F64" stroke-width="1.4"/>
+<text x="633.0" y="539" fill="#176F64" font-size="22" text-anchor="middle"><tspan x="633.0" dy="22">2</tspan></text>
+<text x="674" y="527" fill="#183B37" font-size="23" text-anchor="start"><tspan x="674" dy="23">Recheck booking access</tspan></text>
+<text x="674" y="562" fill="#687D78" font-size="16" text-anchor="start"><tspan x="674" dy="16">Still signed in and allowed to book?</tspan><tspan x="674" dy="21.6">Read current access from the database.</tspan></text>
+<rect x="590" y="690" width="460" height="108" rx="16" fill="white" stroke="#176F64" stroke-width="1.6"/>
+<path d="M 608 692 Q 820.0 689 1032 691" fill="none" stroke="#176F64" stroke-width="0.65" opacity=".35"/>
+<ellipse cx="633" cy="734" rx="21" ry="21" fill="#E5F6ED" stroke="#176F64" stroke-width="1.4"/>
+<text x="633.0" y="719" fill="#176F64" font-size="22" text-anchor="middle"><tspan x="633.0" dy="22">3</tspan></text>
+<text x="674" y="707" fill="#183B37" font-size="23" text-anchor="start"><tspan x="674" dy="23">Retry lookup</tspan></text>
+<text x="674" y="742" fill="#687D78" font-size="16" text-anchor="start"><tspan x="674" dy="16">Has this request already succeeded?</tspan><tspan x="674" dy="21.6">Look up this user + request ID.</tspan></text>
+<rect x="590" y="920" width="460" height="108" rx="16" fill="white" stroke="#176F64" stroke-width="1.6"/>
+<path d="M 608 922 Q 820.0 919 1032 921" fill="none" stroke="#176F64" stroke-width="0.65" opacity=".35"/>
+<ellipse cx="633" cy="964" rx="21" ry="21" fill="#E5F6ED" stroke="#176F64" stroke-width="1.4"/>
+<text x="633.0" y="949" fill="#176F64" font-size="22" text-anchor="middle"><tspan x="633.0" dy="22">4</tspan></text>
+<text x="674" y="937" fill="#183B37" font-size="23" text-anchor="start"><tspan x="674" dy="23">Recheck availability</tspan></text>
+<text x="674" y="972" fill="#687D78" font-size="16" text-anchor="start"><tspan x="674" dy="16">Recalculate hours, breaks and bookings,</tspan><tspan x="674" dy="21.6">including limits, timezone and buffers.</tspan></text>
+<rect x="590" y="1090" width="460" height="108" rx="16" fill="white" stroke="#176F64" stroke-width="1.6"/>
+<path d="M 608 1092 Q 820.0 1089 1032 1091" fill="none" stroke="#176F64" stroke-width="0.65" opacity=".35"/>
+<ellipse cx="633" cy="1134" rx="21" ry="21" fill="#E5F6ED" stroke="#176F64" stroke-width="1.4"/>
+<text x="633.0" y="1119" fill="#176F64" font-size="22" text-anchor="middle"><tspan x="633.0" dy="22">5</tspan></text>
+<text x="674" y="1107" fill="#183B37" font-size="23" text-anchor="start"><tspan x="674" dy="23">Save everything together</tspan></text>
+<text x="674" y="1142" fill="#687D78" font-size="16" text-anchor="start"><tspan x="674" dy="16">Appointment + buffered reservation</tspan><tspan x="674" dy="21.6">+ creation audit + retry receipt</tspan></text>
+<rect x="590" y="1260" width="460" height="108" rx="16" fill="white" stroke="#176F64" stroke-width="1.6"/>
+<path d="M 608 1262 Q 820.0 1259 1032 1261" fill="none" stroke="#176F64" stroke-width="0.65" opacity=".35"/>
+<ellipse cx="633" cy="1304" rx="21" ry="21" fill="#E5F6ED" stroke="#176F64" stroke-width="1.4"/>
+<text x="633.0" y="1289" fill="#176F64" font-size="22" text-anchor="middle"><tspan x="633.0" dy="22">6</tspan></text>
+<text x="674" y="1277" fill="#183B37" font-size="23" text-anchor="start"><tspan x="674" dy="23">Commit</tspan></text>
+<text x="674" y="1312" fill="#687D78" font-size="16" text-anchor="start"><tspan x="674" dy="16">Make the changes permanent.</tspan><tspan x="674" dy="21.6">Release the lock after the transaction.</tspan></text>
+<polyline points="820,460 820,500" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<polyline points="820,620 820,680" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<polyline points="820,1030 820,1080" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<polyline points="820,1200 820,1250" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<polyline points="820,800 820,910" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="837" y="837" fill="#176F64" font-size="16" text-anchor="start"><tspan x="837" dy="16">New request</tspan></text>
+<polyline points="820,1370 820,1434" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<rect x="590" y="1445" width="460" height="76" rx="16" fill="#E5F6ED" stroke="#176F64" stroke-width="1.6"/>
+<path d="M 608 1447 Q 820.0 1444 1032 1446" fill="none" stroke="#176F64" stroke-width="0.65" opacity=".35"/>
+<text x="820.0" y="1462" fill="#176F64" font-size="24" text-anchor="middle"><tspan x="820.0" dy="24">Return booking confirmation</tspan></text>
+<polyline points="1060,564 1178,564" fill="none" stroke="#923B50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1080" y="536" fill="#923B50" font-size="14" text-anchor="start"><tspan x="1080" dy="14">Denied</tspan></text>
+<rect x="1190" y="510" width="400" height="108" rx="16" fill="#FBE8EC" stroke="#D4A4B1" stroke-width="1.6"/>
+<path d="M 1208 512 Q 1390.0 509 1572 511" fill="none" stroke="#D4A4B1" stroke-width="0.65" opacity=".35"/>
+<text x="1210" y="525" fill="#923B50" font-size="22" text-anchor="start"><tspan x="1210" dy="22">Access no longer valid</tspan></text>
+<text x="1210" y="565" fill="#923B50" font-size="16" text-anchor="start"><tspan x="1210" dy="16">Reject the request.</tspan><tspan x="1210" dy="21.6">A waiting request keeps no old privileges.</tspan></text>
+<polyline points="1060,744 1178,744" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1084" y="716" fill="#176F64" font-size="14" text-anchor="start"><tspan x="1084" dy="14">Found</tspan></text>
+<rect x="1190" y="682" width="400" height="207" rx="16" fill="#E5F6ED" stroke="#A9CDB9" stroke-width="1.6"/>
+<path d="M 1208 684 Q 1390.0 681 1572 683" fill="none" stroke="#A9CDB9" stroke-width="0.65" opacity=".35"/>
+<text x="1210" y="699" fill="#176F64" font-size="22" text-anchor="start"><tspan x="1210" dy="22">Existing booking request</tspan></text>
+<text x="1210" y="739" fill="#183B37" font-size="16" text-anchor="start"><tspan x="1210" dy="16">Same details + within 24 hours?</tspan><tspan x="1210" dy="21.6">Finish transaction; return saved confirmation.</tspan><tspan x="1210" dy="21.6">No second appointment is created.</tspan></text>
+<text x="1210" y="823" fill="#923B50" font-size="16" text-anchor="start"><tspan x="1210" dy="16">Changed details / expired key?</tspan><tspan x="1210" dy="21.6">Reject key reuse instead.</tspan></text>
+<polyline points="1060,974 1178,974" fill="none" stroke="#923B50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+<text x="1079" y="945" fill="#923B50" font-size="14" text-anchor="start"><tspan x="1079" dy="14">Taken</tspan></text>
+<rect x="1190" y="920" width="400" height="108" rx="16" fill="#FBE8EC" stroke="#D4A4B1" stroke-width="1.6"/>
+<path d="M 1208 922 Q 1390.0 919 1572 921" fill="none" stroke="#D4A4B1" stroke-width="0.65" opacity=".35"/>
+<text x="1210" y="935" fill="#923B50" font-size="22" text-anchor="start"><tspan x="1210" dy="22">Slot unavailable</tspan></text>
+<text x="1210" y="975" fill="#923B50" font-size="16" text-anchor="start"><tspan x="1210" dy="16">Refresh the available times</tspan><tspan x="1210" dy="21.6">and choose another slot.</tspan></text>
+<rect x="64" y="350" width="395" height="172" rx="16" fill="white" stroke="#C8DAD2" stroke-width="1.6"/>
+<path d="M 82 352 Q 261.5 349 441 351" fill="none" stroke="#C8DAD2" stroke-width="0.65" opacity=".35"/>
+<text x="86" y="369" fill="#176F64" font-size="23" text-anchor="start"><tspan x="86" dy="23">Why the lock?</tspan></text>
+<text x="86" y="410" fill="#183B37" font-size="18" text-anchor="start"><tspan x="86" dy="18">A and B cannot hold it together.</tspan><tspan x="86" dy="24.3">A books first; B waits.</tspan><tspan x="86" dy="24.3">When A finishes, B checks fresh data.</tspan></text>
+<rect x="64" y="681" width="395" height="218" rx="16" fill="#FFF0DB" stroke="#D9BC83" stroke-width="1.6"/>
+<path d="M 82 683 Q 261.5 680 441 682" fill="none" stroke="#D9BC83" stroke-width="0.65" opacity=".35"/>
+<text x="86" y="701" fill="#183B37" font-size="22" text-anchor="start"><tspan x="86" dy="22">Why retry lookup comes first</tspan></text>
+<text x="86" y="746" fill="#183B37" font-size="18" text-anchor="start"><tspan x="86" dy="18">The first attempt may have booked</tspan><tspan x="86" dy="24.3">the slot, but lost its response.</tspan><tspan x="86" dy="24.3">Checking availability first would</tspan><tspan x="86" dy="24.3">reject that user’s own booking.</tspan></text>
+<text x="86" y="855" fill="#865719" font-size="16" text-anchor="start"><tspan x="86" dy="16">Reuse the same request ID on retry.</tspan></text>
+<rect x="64" y="1113" width="395" height="196" rx="16" fill="#FBE8EC" stroke="#D4A4B1" stroke-width="1.6"/>
+<path d="M 82 1115 Q 261.5 1112 441 1114" fill="none" stroke="#D4A4B1" stroke-width="0.65" opacity=".35"/>
+<text x="86" y="1133" fill="#923B50" font-size="23" text-anchor="start"><tspan x="86" dy="23">Save or commit fails?</tspan></text>
+<text x="86" y="1177" fill="#183B37" font-size="18" text-anchor="start"><tspan x="86" dy="18">Roll back every change.</tspan><tspan x="86" dy="24.3">Release the lock and return an error.</tspan><tspan x="86" dy="24.3">No half-saved appointment remains.</tspan></text>
+<text x="86" y="1267" fill="#923B50" font-size="15" text-anchor="start"><tspan x="86" dy="15">Applies to every error in the transaction.</tspan></text>
+<polyline points="580,1144 490,1144 490,1165 470,1165" fill="none" stroke="#923B50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)" stroke-dasharray="6 6"/>
+<polyline points="580,1314 490,1314 490,1255 470,1255" fill="none" stroke="#923B50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)" stroke-dasharray="6 6"/>
+<rect x="1190" y="1125" width="400" height="184" rx="16" fill="white" stroke="#C8DAD2" stroke-width="1.6"/>
+<path d="M 1208 1127 Q 1390.0 1124 1572 1126" fill="none" stroke="#C8DAD2" stroke-width="0.65" opacity=".35"/>
+<text x="1210" y="1144" fill="#176F64" font-size="23" text-anchor="start"><tspan x="1210" dy="23">Database safety net</tspan></text>
+<text x="1210" y="1188" fill="#183B37" font-size="18" text-anchor="start"><tspan x="1210" dy="18">PostgreSQL also rejects overlapping</tspan><tspan x="1210" dy="24.3">reservations — including buffers.</tspan><tspan x="1210" dy="24.3">Touching endpoints are allowed.</tspan></text>
+<text x="1210" y="1265" fill="#687D78" font-size="15" text-anchor="start"><tspan x="1210" dy="15">Protection even if a writer skips the lock.</tspan></text>
+<text x="64" y="1564" fill="#687D78" font-size="17" text-anchor="start"><tspan x="64" dy="17">Previewing or selecting a slot creates no reservation. Confirmation is returned only after the transaction finishes.</tspan></text></g></svg>
