@@ -59,6 +59,7 @@ export default async function setup() {
       DATABASE_URL: databaseUrl, MIGRATION_DATABASE_URL: databaseUrl,
       PATIENT_AUTH_SECRET: randomBytes(48).toString("hex"), STAFF_AUTH_SECRET: randomBytes(48).toString("hex"),
       AUTH_TEST_MODE: "true", BOOTSTRAP_ADMIN_EMAIL: "doctor@example.test", BOOTSTRAP_ADMIN_NAME: "Synthetic Doctor", BOOTSTRAP_ADMIN_PIN: "4821",
+      BOOKING_DATA_KEY: randomBytes(32).toString("base64"),
       NEXT_TELEMETRY_DISABLED: "1",
     };
     await promisify(execFile)(process.execPath, ["--conditions=react-server", "--import", "tsx", "scripts/bootstrap-admin.ts"], { cwd: root, env, timeout: 20_000 });

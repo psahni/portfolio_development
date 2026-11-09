@@ -1,6 +1,6 @@
 # Nuvortiq Smart Booking — MVP Architecture
 
-**Status: native MVP; patient-booking-first delivery selected. Foundation, clinic login, scheduling and the shared booking service are implemented. Patient sign-in/listing is #10; hosted booking follows in #11.**
+**Status: native MVP; patient-booking-first delivery selected. Foundation, clinic login, scheduling and the shared booking service are implemented. Patient sign-in/listing #10 is merged; hosted patient booking #11 is implemented for review.**
 
 ## Scope and stack
 
@@ -30,7 +30,7 @@ Email codes are expiring and single-use. Protect PIN hashes using the server sec
 
 For local testing only, `AUTH_TEST_MODE=true` enables requested code `0000` for patient sign-in, including automatic registration of new patients. Staff/admin must already exist and be active. No email is sent in this mode. Admin test login uses `0000` instead of the PIN. Production/non-loopback origins reject test mode. It cannot create clinic accounts, reset PINs or bypass disabled accounts/lockout.
 
-M1 isolates patient and staff identities in separate PostgreSQL auth schemas, endpoint paths and cookies. The [auth revision](specs/AUTH_CODE_REVISION.md) adds bootstrap, access checks and the shared clinic login/workspace. Only required patient/staff login/logout handlers are mounted; codes currently use localhost test mode. Patient listings use explicit account ownership. Staff management, PIN-change screens, real email and booking forms remain future tasks; advanced shared abuse controls are deferred to M6.
+M1 isolates patient and staff identities in separate PostgreSQL auth schemas, endpoint paths and cookies. The [auth revision](specs/AUTH_CODE_REVISION.md) adds bootstrap, access checks and the shared clinic login/workspace. Only required patient/staff login/logout handlers are mounted; codes currently use localhost test mode. Patient listings use explicit account ownership. `/book` protects the patient selection/details/review/confirmation flow; only confirmation creates occupancy through the shared booking service. Staff management, PIN-change screens and real email remain future tasks; advanced shared abuse controls are deferred to M6.
 
 ## Booking and cancellation
 

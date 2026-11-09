@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { getClinicService } from "@/modules/clinic/server";
 import { ClinicShell } from "@/components/layout/clinic-shell";
 import { ClinicSummary } from "./clinic-summary";
+import { BookingLink } from "./booking-link";
+import { readAuthEnvironment } from "@/platform/env";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,7 @@ export default async function Workspace() {
       <div className="mb-5 flex items-center gap-2 text-xs text-muted-foreground"><span className="flex size-7 items-center justify-center rounded-full border bg-card text-[10px] font-semibold text-primary">{principal.role === "admin" ? "DR" : "ST"}</span><span>{principal.role === "admin" ? "Doctor / Admin" : "Staff"}</span><span className="mx-1 text-border">/</span><span>Overview</span></div>
       {principal.role === "admin" && (settings ? <ClinicSummary settings={settings} /> : <div className="ui-panel max-w-xl"><p className="ui-eyebrow mb-3">Welcome to your workspace</p><h2 className="text-xl font-semibold tracking-tight">Prepare your clinic</h2><p className="ui-hint mt-3 mb-5">Start with your clinic details, appointment rules and weekly opening hours.</p><Button asChild><Link href="/admin/settings">Clinic settings</Link></Button></div>)}
       {principal.role === "staff" && <div className="ui-panel max-w-xl"><h2 className="font-semibold">Welcome to your clinic</h2><p className="ui-hint mt-2">You’re signed in to your clinic workspace. Your doctor can help you get started.</p></div>}
+      {principal.role === "admin" && settings && <BookingLink url={new URL("/book", readAuthEnvironment().APP_URL).href} />}
     </ClinicShell>
   );
 }

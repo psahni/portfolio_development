@@ -2,8 +2,10 @@ import Link from "next/link";
 import { ArrowLeft, CalendarDays, ShieldCheck } from "lucide-react";
 import { Brand } from "@/components/layout/brand";
 import { PatientLoginForm } from "./patient-login-form";
+import { patientDestination } from "@/modules/identity/patient-destination";
 
-export default function PatientLogin() {
+export default async function PatientLogin({ searchParams }: { searchParams: Promise<{ next?: string | string[] }> }) {
+  const destination = patientDestination((await searchParams).next);
   return <main className="mx-auto flex min-h-screen max-w-6xl flex-col px-5 py-6 sm:px-8">
     <header className="flex items-center justify-between gap-4"><Brand /><Link href="/" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary"><ArrowLeft aria-hidden="true" className="size-3.5" />Back to home</Link></header>
     <div className="grid flex-1 items-center gap-7 py-6 md:grid-cols-[1.1fr_1fr] md:gap-20 md:py-16">
@@ -17,7 +19,7 @@ export default function PatientLogin() {
       <section aria-labelledby="patient-sign-in-heading" className="mx-auto w-full max-w-sm py-3">
         <p className="ui-eyebrow mb-3 hidden md:block">Welcome</p><h2 id="patient-sign-in-heading" className="text-[28px] font-semibold tracking-[-0.04em]">Patient sign in</h2>
         <p className="mt-3 mb-7 text-sm leading-relaxed text-muted-foreground">Use your email and a one-time code. New here? Your account is created after you verify the code.</p>
-        <PatientLoginForm />
+        <PatientLoginForm destination={destination} />
         <p className="mt-7 border-t pt-5 text-xs leading-relaxed text-muted-foreground">Doctor or clinic staff? <Link href="/admin" className="font-medium text-primary underline-offset-4 hover:underline">Clinic sign in</Link></p>
       </section>
     </div>

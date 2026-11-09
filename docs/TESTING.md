@@ -1,18 +1,19 @@
 # Testing the current MVP
 
-**Available:** clinic sign-in/workspace, patient sign-in at `/login`, and a protected patient list at `/appointments`. Booking forms, staff management and PIN-change screens are still pending.
+**Available:** clinic sign-in/workspace, patient sign-in at `/login`, and a protected patient list at `/appointments`. `/book` supports patient booking. Staff management and PIN-change screens are still pending.
 
 **Clinic settings:** After `pnpm db:migrate`, sign in as admin → **Clinic settings**. Enter names, choose a timezone, set appointment rules and add weekly hours. Save and reload to verify persistence. Overlapping/reversed hours must be rejected; removing all intervals closes a day. Staff cannot open this page or change settings.
 
 **Availability:** Admin → **Availability** → choose a future date → **Show day**. Mark **Holiday / Closed**, apply and reload: no slots. Restore **Use weekly hours**: slots return. Try **Special hours** and a one-off break: only that date changes, and blocked times disappear from the preview. Restoring weekly hours keeps breaks until removed. Overlapping breaks/hours must be rejected. Previewing never books a slot.
 
-**Doctor calendar:** Admin → **Calendar**. Switch Day/Week, choose dates, navigate and refresh. Available slots are green, booked times red and breaks amber; each also has a text label. Add a break in Availability and refresh Calendar to check it. Booked cards use existing appointment reservations; synthetic browser tests cover them until booking creation is implemented. Viewing creates no reservation.
+**Doctor calendar:** Admin → **Calendar**. Switch Day/Week, choose dates, navigate and refresh. Available slots are green, booked times red and breaks amber; each also has a text label. Add a break in Availability and refresh Calendar to check it. Booked cards use appointment reservations, including confirmed patient bookings. Viewing creates no reservation.
 
 ## 1. Local setup
 
 Keep your existing dev server running. Start local PostgreSQL if needed, then use your ignored `.env.local` settings:
 
 - Set `AUTH_TEST_MODE=true` for localhost development only. Keep separate patient/staff auth secrets.
+- Set a dedicated `BOOKING_DATA_KEY` with `openssl rand -base64 32` if absent; retain an existing key unchanged.
 - Configure a synthetic bootstrap admin email/name and four-digit PIN other than `0000`.
 - Run `pnpm db:migrate` and `pnpm db:bootstrap-admin`. Repeating bootstrap preserves the existing PIN.
 
@@ -37,7 +38,7 @@ Unknown/admin emails receive the same code-request feedback as staff but cannot 
 **Patient checks:**
 
 - With `AUTH_TEST_MODE=true`, open `/login`, enter a new synthetic email such as `patient@example.test`, request a code and enter `0000`. No account setup or separate signup is needed; entering an email alone creates no account.
-- Expect **My appointments** and **No appointments yet** for this new account. Booking forms are a separate task; automated tests cover populated lists.
+- Expect **My appointments** and **No appointments yet** for this new account. Choose **Book an appointment**, load an available date, select a time and enter a synthetic name/phone. Review, then **Confirm booking**; expect confirmation and the visit in My appointments. Leaving before confirmation creates no booking.
 - Sign out and revisit `/appointments`: it should return to `/login`. Patient sign-in must not open the clinic workspace, and clinic sign-in alone must not open patient appointments.
 - Try an incorrect/expired code, request a new code, and change the email. Errors should be clear; repeated attempts remain limited. With test mode off, code requests report unavailable until email delivery is connected.
 
