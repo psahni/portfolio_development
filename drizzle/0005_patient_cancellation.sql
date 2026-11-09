@@ -1,0 +1,2 @@
+ALTER TABLE "booking_audit" DROP CONSTRAINT "booking_audit_action";--> statement-breakpoint
+ALTER TABLE "booking_audit" ADD CONSTRAINT "booking_audit_action" CHECK ("booking_audit"."action" in ('created', 'cancelled'));
