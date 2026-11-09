@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { isAPIError } from "better-auth/api";
 import { getSchedulingService } from "@/modules/scheduling/server";
 import { dateSchema } from "@/modules/scheduling/models";
+import { SignOutButton } from "../sign-out-button";
+import { ClinicShell } from "@/components/layout/clinic-shell";
 import { AvailabilityEditor } from "./availability-editor";
 
 export const dynamic = "force-dynamic";
@@ -16,9 +18,7 @@ export default async function AvailabilityPage({ searchParams }: { searchParams:
     if (isAPIError(error) && error.status === "FORBIDDEN") redirect("/admin/workspace");
     throw error;
   });
-  return <main className="mx-auto min-h-screen max-w-5xl px-5 py-8 sm:px-8">
-    <Link href="/admin/workspace" className="rounded text-sm text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">← Back to workspace</Link>
-    <header className="py-7"><p className="mb-3 text-xs font-semibold tracking-[0.16em] text-primary uppercase">Your clinic calendar</p><h1 className="text-3xl font-medium tracking-tight">Availability</h1><p className="mt-3 text-sm text-muted-foreground">Preview appointment times and make changes for a single day. <Link href="/admin/calendar" className="font-medium text-primary underline">Open calendar</Link></p></header>
-    {initial.configured ? <AvailabilityEditor initial={initial} /> : <section className="rounded-2xl border bg-card p-6"><h2 className="text-lg font-semibold">Set up your clinic first</h2><p className="mt-2 mb-4 text-sm text-muted-foreground">Choose a clinic timezone and weekly hours before managing availability.</p><Link className="font-medium text-primary underline" href="/admin/settings">Clinic settings</Link></section>}
-  </main>;
+  return <ClinicShell actions={<SignOutButton />} active="availability" title="Availability" description={<>Fine-tune a single day without changing your regular schedule. <Link href="/admin/calendar" className="font-medium text-primary underline underline-offset-4">Open calendar</Link></>}>
+    {initial.configured ? <AvailabilityEditor initial={initial} /> : <section className="ui-panel"><h2 className="text-lg font-semibold">Set up your clinic first</h2><p className="mt-2 mb-4 text-sm text-muted-foreground">Choose a clinic timezone and weekly hours before managing availability.</p><Link className="font-medium text-primary underline" href="/admin/settings">Clinic settings</Link></section>}
+  </ClinicShell>;
 }

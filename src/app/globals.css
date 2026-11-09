@@ -1,17 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8f8f3;
-  --foreground: #163c38;
+  --background: #f8faf9;
+  --foreground: #183b37;
   --card: #ffffff;
-  --card-foreground: #163c38;
-  --primary: #176c60;
+  --card-foreground: #183b37;
+  --primary: #176f64;
   --primary-foreground: #ffffff;
-  --muted: #eef1eb;
-  --muted-foreground: #637571;
-  --border: #dce3db;
-  --input: #cbd8cf;
-  --ring: #176c60;
+  --muted: #f1f5f3;
+  --secondary: #687d78;
+  /* Strengthen secondary text for AA contrast on the requested light surfaces. */
+  --muted-foreground: #5d726c;
+  --border: #dfe8e3;
+  --input: #dfe8e3;
+  --ring: #176f64;
+  --available: #e5f6ed;
+  --booked: #fbe8ec;
+  --break: #fff0db;
+  --available-foreground: #176044;
+  --booked-foreground: #923b50;
+  --break-foreground: #865719;
+  --radius: 0.625rem;
 }
 @theme inline {
   --color-background: var(--background);
@@ -25,10 +34,36 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --font-sans: Arial, Helvetica, sans-serif;
+  --color-available: var(--available);
+  --color-booked: var(--booked);
+  --color-break: var(--break);
+  --color-available-foreground: var(--available-foreground);
+  --color-booked-foreground: var(--booked-foreground);
+  --color-break-foreground: var(--break-foreground);
+  --font-sans: var(--font-geist), system-ui, sans-serif;
 }
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background font-sans text-foreground antialiased; }
-  ::selection { background: #cee7d6; }
+  body { @apply bg-background font-sans text-foreground antialiased; font-size: 14px; }
+  button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+  button:not(:disabled), select { cursor: pointer; }
+  button, a, input, select, textarea { transition-duration: 160ms; }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+  ::selection { background: var(--available); }
+  h1, h2, h3 { text-wrap: balance; }
+}
+@layer components {
+  .ui-input { @apply mt-2 h-11 w-full min-w-0 rounded-lg border border-input bg-card px-3 text-base text-foreground outline-none transition-[border-color,box-shadow] placeholder:text-muted-foreground/60 hover:border-primary/30 focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm; }
+  .ui-panel { @apply min-w-0 rounded-xl border bg-card p-5 sm:p-6; box-shadow: 0 1px 2px #183b3703; }
+  .ui-eyebrow { @apply text-[10px] font-semibold tracking-[0.16em] text-muted-foreground uppercase; }
+  .ui-page-title { @apply text-2xl font-semibold tracking-[-0.035em] sm:text-[28px]; }
+  .ui-hint { @apply text-sm leading-relaxed text-muted-foreground; }
+  .calendar-closed { background-color: #f5f7f6; background-image: repeating-linear-gradient(135deg, transparent, transparent 7px, #dfe8e340 7px, #dfe8e340 8px); }
+  .calendar-hour-lines { background-image: linear-gradient(to bottom, var(--border) 1px, transparent 1px), linear-gradient(to bottom, #dfe8e340 1px, transparent 1px); background-size: 100% 96px, 100% 48px; }
+  .calendar-event { @apply absolute inset-x-1 overflow-hidden rounded-md border-l-2 text-left text-[11px] leading-tight transition-[background-color,box-shadow] focus-visible:z-30 focus-visible:outline-2 focus-visible:outline-offset-1 sm:inset-x-1.5; }
+  .calendar-event:hover { box-shadow: 0 1px 6px #183b3712; }
+  .calendar-detail::backdrop { background: #183b3726; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }

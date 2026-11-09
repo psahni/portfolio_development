@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import type { AvailabilityView } from "@/modules/scheduling/service";
 import { breakSchema, clockLabel, overrideSchema, type ConflictTime, type TimeInterval } from "@/modules/scheduling/models";
 
-const inputClass = "mt-2 h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
-const cardClass = "min-w-0 rounded-2xl border bg-card p-5 sm:p-6";
+const inputClass = "ui-input";
+const cardClass = "ui-panel";
 function seedIntervals(view: AvailabilityView): TimeInterval[] {
   const source = view.override?.mode === "custom" ? view.override.intervals : view.weeklyHours;
   return source.length ? source.map((entry) => ({ ...entry })) : [{ start: "09:00", end: "17:00" }];
@@ -95,14 +95,14 @@ export function AvailabilityEditor({ initial }: { initial: AvailabilityView }) {
     {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"><p>{error}</p>{conflicts.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5">{conflicts.map((item) => <li key={item.startsAt}>{item.kind === "appointment" ? "Booked appointment" : "Blocked time"}: {new Intl.DateTimeFormat("en-US", { timeZone: view.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(item.startsAt))} – {new Intl.DateTimeFormat("en-US", { timeZone: view.timezone, timeStyle: "short" }).format(new Date(item.endsAt))}</li>)}</ul>}</div>}
     {notice && <p role="status" className="rounded-lg border bg-muted p-3 text-sm text-primary">{notice}</p>}
     <section className={cardClass} aria-labelledby="current-day">
-      <h2 id="current-day" className="text-lg font-semibold">{title}</h2>
+      <h2 id="current-day" className="text-sm font-semibold">{title}</h2>
       <p className="mt-2 font-medium text-primary">{view.override?.mode === "closed" ? "Holiday / Closed" : view.override?.mode === "custom" ? "Special hours" : "Regular weekly hours"}</p>
       <p className="mt-2 text-sm text-muted-foreground">{view.effectiveHours.length ? view.effectiveHours.map((entry) => `${clockLabel(entry.start)} – ${clockLabel(entry.end)}`).join(" · ") : "Clinic closed for this date."}</p>
       {view.override?.reason && <p className="mt-2 break-words text-sm text-muted-foreground">Note: {view.override.reason}</p>}
     </section>
     <div className="grid items-start gap-6 lg:grid-cols-2">
       <form onSubmit={apply} className={cardClass} noValidate>
-        <h2 className="text-lg font-semibold">Day override</h2><p className="mt-2 mb-5 text-sm text-muted-foreground">Replace this day’s weekly hours, or restore the normal schedule.</p>
+        <h2 className="text-sm font-semibold">Day override</h2><p className="mt-2 mb-5 text-sm text-muted-foreground">Replace this day’s weekly hours, or restore the normal schedule.</p>
         <fieldset disabled={pending || mustLoad} className="space-y-4">
           <div><label htmlFor="day-mode" className="text-sm font-medium">Schedule for this day</label><select id="day-mode" value={mode} onChange={(event) => { setMode(event.target.value as typeof mode); setNotice(""); setError(""); }} className={inputClass}><option value="weekly">Use weekly hours</option><option value="closed">Holiday / Closed</option><option value="custom">Special hours</option></select></div>
           {mode === "custom" && <div className="space-y-4">{intervals.map((entry, index) => <div key={index} className="grid grid-cols-2 gap-3">
@@ -114,7 +114,7 @@ export function AvailabilityEditor({ initial }: { initial: AvailabilityView }) {
         </fieldset>
       </form>
       <section className={cardClass} aria-labelledby="one-off-breaks">
-        <h2 id="one-off-breaks" className="text-lg font-semibold">One-off breaks</h2>
+        <h2 id="one-off-breaks" className="text-sm font-semibold">One-off breaks</h2>
         {breakMessage ? <p className="mt-3 text-sm text-muted-foreground">{breakMessage}</p> : <>
         <p className="mt-2 mb-5 text-sm text-muted-foreground">Add each break using Add break, then repeat for more breaks on this day. Each stays blocked until removed, even after restoring weekly hours.</p>
         <form onSubmit={addBreak} noValidate><fieldset disabled={pending || mustLoad} className="space-y-4">
@@ -126,7 +126,7 @@ export function AvailabilityEditor({ initial }: { initial: AvailabilityView }) {
       </section>
     </div>
     <section className={cardClass} aria-labelledby="available-slots">
-      <h2 id="available-slots" className="text-lg font-semibold">Available slots</h2><p className="mt-2 mb-4 text-sm text-muted-foreground">{view.slots.length} available times. Viewing times does not reserve an appointment.</p>
+      <h2 id="available-slots" className="text-sm font-semibold">Available slots</h2><p className="mt-2 mb-4 text-sm text-muted-foreground">{view.slots.length} available times. Viewing times does not reserve an appointment.</p>
       {!view.slots.length && <p className="rounded-lg bg-muted p-4 text-sm">{view.outsideWindow ? "This date is outside the current booking window." : !view.effectiveHours.length ? "The clinic is closed on this date." : "No slots meet the opening hours, notice, buffers and blocked-time rules."}</p>}
       <ul aria-label="Available appointment slots" className="grid max-h-96 grid-cols-1 gap-3 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3">{view.slots.map((slot) => <li key={slot.startsAt} className="rounded-lg border px-3 py-3 text-center text-sm"><time dateTime={slot.startsAt}>{slot.label}</time></li>)}</ul>
     </section>
