@@ -34,6 +34,12 @@ async function showTimes(page: Page) {
 async function review(page: Page, name = "Synthetic Visitor") {
   await page.getByRole("button", { name: "9:00 AM – 9:20 AM", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Your details", exact: true })).toBeFocused();
+  const details = page.getByRole("dialog", { name: "Your details", exact: true });
+  await expect(details).toBeVisible();
+  const box = await details.boundingBox(), viewport = page.viewportSize();
+  expect(box).not.toBeNull(); expect(viewport).not.toBeNull();
+  expect(Math.abs((box!.x + box!.width / 2) - viewport!.width / 2)).toBeLessThan(2);
+  expect(Math.abs((box!.y + box!.height / 2) - viewport!.height / 2)).toBeLessThan(2);
   await page.getByLabel("Full name", { exact: true }).fill(name); await page.getByLabel("Phone number", { exact: true }).fill("+91 98765 43210");
   await page.getByRole("button", { name: "Review booking", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Review your appointment", exact: true })).toBeFocused();
