@@ -154,6 +154,8 @@ test("sign-in ignores external destinations and clinic sessions cannot open book
   await seedClinic(); await signIn(page, "patient@example.test", "https://untrusted.example/");
   await page.goto("/admin"); await page.getByLabel("Email", { exact: true }).fill("doctor@example.test"); await page.getByLabel("PIN", { exact: true }).fill("0000"); await page.getByRole("button", { name: "Sign in", exact: true }).click(); await expect(page).toHaveURL(/\/admin\/workspace$/);
   await page.goto("/appointments"); await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  expect((await page.request.get("/api/patient/availability")).status()).toBe(401);
   await page.goto("/book"); await expect(page).toHaveURL(/\/login\?next=(%2F|\/)book$/);
   expect((await page.request.get("/api/patient/availability")).status()).toBe(401);
 });
