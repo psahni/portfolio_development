@@ -329,6 +329,71 @@ describe("authoritative booking checks", () => {
 });
 
 describe("hosted patient booking HTTP", () => {
+  const defaultDay = async () => {
+    const response = await availabilityHandler()(httpRequest("availability"));
+    expect(response.status).toBe(200);
+    return (await response.json()).availability;
+  };
+  it("keeps today selected when it still has bookable slots", async () => {
+    const view = await defaultDay();
+    expect(view).toMatchObject({ today: "2026-11-09", date: "2026-11-09", noAvailableDates: false });
+    expect(view.slots[0].startsAt).toBe("2026-11-09T09:00:00.000Z");
+    expect(await counts()).toEqual([0, 0, 0, 0]);
+  });
+  it.each(["after closing", "date closure", "weekly closure", "fully occupied"])("selects the next available day when today is unavailable: %s", async (reason) => {
+    if (reason === "after closing") now = new Date("2026-11-09T12:00:00Z");
+    if (reason === "date closure") await schedule.saveOverride(credentials.admin, { date: "2026-11-09", mode: "closed" });
+    if (reason === "weekly closure") {
+      const config = configuration(); config.weeklyHours[0].intervals = []; await clinic.save(credentials.admin, config);
+    }
+    if (reason === "fully occupied") await database.db.insert(reservations).values({ doctorId: 1, kind: "block", startsAt: new Date("2026-11-09T09:00Z"), endsAt: new Date("2026-11-09T12:00Z") });
+    const before = await counts(), view = await defaultDay();
+    expect(view).toMatchObject({ today: "2026-11-09", date, closed: false, noAvailableDates: false });
+    expect(view.slots[0].startsAt).toBe(`${date}T09:00:00.000Z`); expect(await counts()).toEqual(before);
+    const explicit = await (await availabilityHandler()(httpRequest("availability?date=2026-11-09"))).json();
+    expect(explicit.availability).toMatchObject({ date: "2026-11-09", slots: [], noAvailableDates: false });
+  });
+  it("skips multiple closed or occupied dates instead of assuming tomorrow is available", async () => {
+    now = new Date("2026-11-09T12:00Z");
+    await schedule.saveOverride(credentials.admin, { date, mode: "closed", reason: "private holiday note" });
+    await database.db.insert(reservations).values({ doctorId: 1, kind: "block", startsAt: new Date("2026-11-11T09:00Z"), endsAt: new Date("2026-11-11T12:00Z"), reason: "private break note" });
+    const view = await defaultDay(); expect(view.date).toBe("2026-11-12"); expect(view.slots).toHaveLength(9);
+    expect(JSON.stringify(view)).not.toContain("private"); expect(await counts()).toEqual([0, 1, 0, 0]);
+  });
+  it("respects minimum notice when finding the first bookable date", async () => {
+    await clinic.save(credentials.admin, { ...configuration(), minLeadMinutes: 2880 });
+    expect((await defaultDay()).date).toBe("2026-11-11"); expect(await counts()).toEqual([0, 0, 0, 0]);
+  });
+  it("reports an empty booking window without going beyond its last date", async () => {
+    now = new Date("2026-11-09T12:00Z");
+    await clinic.save(credentials.admin, { ...configuration(), bookingHorizonDays: 1 });
+    await schedule.saveOverride(credentials.admin, { date, mode: "closed" });
+    expect(await defaultDay()).toMatchObject({ today: "2026-11-09", date: "2026-11-09", lastDate: date, slots: [], noAvailableDates: true });
+    const explicit = await (await availabilityHandler()(httpRequest(`availability?date=${date}`))).json();
+    expect(explicit.availability).toMatchObject({ date, closed: true, noAvailableDates: false }); expect(await counts()).toEqual([0, 0, 0, 0]);
+  });
+  it("honors the exact horizon time even when the last calendar date has opening hours", async () => {
+    const config = { ...configuration(), bookingHorizonDays: 1 }; config.weeklyHours[0].intervals = [];
+    await clinic.save(credentials.admin, config);
+    // Tomorrow's 9 AM opening is beyond now + one day (tomorrow at 8 AM).
+    expect(await defaultDay()).toMatchObject({ lastDate: date, slots: [], noAvailableDates: true });
+  });
+  it("uses the clinic's current date when it differs from the UTC date", async () => {
+    now = new Date("2026-11-09T20:00Z");
+    await clinic.save(credentials.admin, { ...configuration(), timezone: "Asia/Kolkata" });
+    await schedule.saveOverride(credentials.admin, { date, mode: "closed" });
+    const view = await defaultDay(); expect(view).toMatchObject({ today: date, date: "2026-11-11", timezone: "Asia/Kolkata" });
+    expect(view.slots[0].startsAt).toBe("2026-11-11T03:30:00.000Z");
+  });
+  it.each(["2026-03-08", "2026-11-01"])("finds the next clinic date across DST on %s", async (day) => {
+    now = new Date(day === "2026-03-08" ? "2026-03-07T23:00Z" : "2026-10-31T22:00Z");
+    const config = { ...configuration(), timezone: "America/New_York" };
+    config.weeklyHours.forEach((entry) => { entry.intervals = [{ start: "00:00", end: "05:00" }]; });
+    await clinic.save(credentials.admin, config);
+    const view = await defaultDay(); expect(view.date).toBe(day);
+    expect(view.slots).toEqual((await schedule.preview(credentials.admin, day)).slots.map(({ startsAt, endsAt, label }) => ({ startsAt, endsAt, label })));
+    expect(await counts()).toEqual([0, 0, 0, 0]);
+  });
   it("distinguishes missing-key setup failure before a booking attempt and permits recovery", async () => {
     const notReady = createPatientBookingHandler(() => { createContactProtection(undefined); return service; }, () => baseURL);
     const response = await notReady(httpRequest("bookings", "patient", input()));

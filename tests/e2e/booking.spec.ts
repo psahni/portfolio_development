@@ -39,6 +39,35 @@ async function review(page: Page, name = "Synthetic Visitor") {
   await expect(page.getByRole("heading", { name: "Review your appointment", exact: true })).toBeFocused();
 }
 
+test("booking initially selects the next available clinic day and preserves an explicitly chosen closed date", async ({ page }) => {
+  await seedClinic();
+  const dates = await withDatabase(async (client) => {
+    const { rows } = await client.query("SELECT (CURRENT_TIMESTAMP AT TIME ZONE timezone)::date::text AS today, ((CURRENT_TIMESTAMP AT TIME ZONE timezone)::date + 2)::text AS next FROM clinic_settings WHERE id=1");
+    await client.query("INSERT INTO day_overrides (doctor_id,date,mode) SELECT 1,(CURRENT_TIMESTAMP AT TIME ZONE timezone)::date + day_offset,'closed' FROM clinic_settings CROSS JOIN generate_series(0,1) AS offsets(day_offset) WHERE id=1");
+    return rows[0];
+  });
+  await signIn(page);
+  await expect(page.getByLabel("Appointment date", { exact: true })).toHaveValue(dates.next);
+  await expect(page.getByRole("button", { name: "9:00 AM – 9:20 AM", exact: true })).toBeVisible();
+  expect((await counts()).appointments).toBe(0);
+  await page.getByLabel("Appointment date", { exact: true }).fill(dates.today); await page.getByRole("button", { name: "Show times", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("The clinic is closed on this date");
+  await expect(page.getByLabel("Appointment date", { exact: true })).toHaveValue(dates.today);
+  expect((await counts()).appointments).toBe(0);
+});
+
+test("an unavailable booking window starts without a selected date and explains the empty state", async ({ page }) => {
+  await seedClinic(); await withDatabase(async (client) => { await client.query("DELETE FROM weekly_hours"); });
+  await signIn(page);
+  await expect(page.getByLabel("Appointment date", { exact: true })).toHaveValue("");
+  await expect(page.getByRole("status")).toContainText("No appointments are available within the booking window");
+  await expect(page.getByRole("button", { name: "Show times", exact: true })).toBeDisabled();
+  expect(await counts()).toEqual({ appointments: 0, reservations: 0, audit: 0, receipts: 0 });
+  await page.getByLabel("Appointment date", { exact: true }).fill(day()); await page.getByRole("button", { name: "Show times", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("The clinic is closed on this date");
+  await expect(page.getByLabel("Appointment date", { exact: true })).toHaveValue(day());
+});
+
 test("mobile keyboard booking preserves the destination, registers a patient and confirms only after review", async ({ page }, testInfo) => {
   await seedClinic(); await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/"); await page.getByRole("link", { name: "Book appointment", exact: true }).click();
