@@ -29,7 +29,13 @@ export function createPatientBookingHandler(getService: () => ReturnType<typeof 
     try {
       if (request.headers.get("origin") !== new URL(getTrustedOrigin()).origin) return respond({ error: "Request origin is not permitted." }, 403);
       const input: unknown = await request.json();
-      return respond({ receipt: await getService().bookPatient(request.headers, input) });
+      let service: ReturnType<typeof createBookingService>;
+      try { service = getService(); }
+      catch {
+        // Initialization failed before the booking service could start a transaction.
+        return respond({ code: "BOOKING_NOT_READY", error: "Online booking is temporarily unavailable. Please try again or contact the clinic." }, 503);
+      }
+      return respond({ receipt: await service.bookPatient(request.headers, input) });
     } catch (error) { return failure(error); }
   };
 }

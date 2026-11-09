@@ -325,6 +325,27 @@ describe("authoritative booking checks", () => {
 });
 
 describe("hosted patient booking HTTP", () => {
+  it("distinguishes missing-key setup failure before a booking attempt and permits recovery", async () => {
+    const notReady = createPatientBookingHandler(() => { createContactProtection(undefined); return service; }, () => baseURL);
+    const response = await notReady(httpRequest("bookings", "patient", input()));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ code: "BOOKING_NOT_READY", error: "Online booking is temporarily unavailable. Please try again or contact the clinic." });
+    expect(await counts()).toEqual([0, 0, 0, 0]);
+    expect((await bookingHandler()(httpRequest("bookings", "patient", input()))).status).toBe(200);
+  });
+  it("allows tomorrow within the clinic window unless a saved closure replaces weekly hours", async () => {
+    now = new Date("2026-11-09T15:30:00Z");
+    await clinic.save(credentials.admin, { ...configuration(), timezone: "Asia/Kolkata", minLeadMinutes: 60, bookingHorizonDays: 15 });
+    const read = async () => (await (await availabilityHandler()(httpRequest(`availability?date=${date}`))).json()).availability;
+    const tomorrow = await read();
+    expect(tomorrow).toMatchObject({ today: "2026-11-09", date, lastDate: "2026-11-24", closed: false });
+    expect(tomorrow.slots[0].startsAt).toBe(`${date}T03:30:00.000Z`);
+    await schedule.saveOverride(credentials.admin, { date, mode: "closed", reason: "private closure" });
+    expect(await read()).toMatchObject({ closed: true, slots: [] });
+    await schedule.saveOverride(credentials.admin, { date, mode: "weekly" });
+    expect((await read()).slots).toEqual(tomorrow.slots);
+    expect(await counts()).toEqual([0, 0, 0, 0]);
+  });
   it("returns free visit times and verified email without internal occupancy or notes", async () => {
     await schedule.addBreak(credentials.admin, { date, start: "09:00", end: "09:20", reason: "private staff note" });
     await schedule.saveOverride(credentials.admin, { date, mode: "custom", intervals: [{ start: "09:00", end: "11:00" }], reason: "internal override note" });

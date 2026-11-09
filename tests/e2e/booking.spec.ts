@@ -54,7 +54,8 @@ test("mobile keyboard booking preserves the destination, registers a patient and
   await expect(page.getByRole("heading", { name: "Review your appointment", exact: true })).toBeFocused();
   expect(await counts()).toEqual({ appointments: 0, reservations: 0, audit: 0, receipts: 0 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath("mobile-booking-review.png"), fullPage: true });
+  await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("mobile-booking-review.png") });
   const confirm = page.getByRole("button", { name: "Confirm booking", exact: true }); await confirm.focus(); await confirm.press("Enter");
   await expect(page.getByRole("heading", { name: "Appointment confirmed", exact: true })).toBeFocused();
   expect(await counts()).toEqual({ appointments: 1, reservations: 1, audit: 1, receipts: 1 });
@@ -67,8 +68,14 @@ test("mobile keyboard booking preserves the destination, registers a patient and
 });
 
 test("abandoning a selected slot or review creates no appointment and keeps the time free", async ({ page }, testInfo) => {
-  await seedClinic(); await signIn(page); await showTimes(page); await review(page);
-  await page.screenshot({ path: testInfo.outputPath("desktop-booking-review.png"), fullPage: true });
+  await seedClinic(); await signIn(page); await showTimes(page);
+  const slots = page.locator('[aria-label="Available times"]');
+  expect((await slots.boundingBox())!.width).toBeGreaterThan(900);
+  await expect(page.locator("main")).not.toContainText("Bookings open through");
+  await page.screenshot({ path: testInfo.outputPath("desktop-booking-slots.png"), fullPage: true });
+  await review(page);
+  await page.screenshot({ path: testInfo.outputPath("desktop-booking-review.png") });
+  await page.getByRole("button", { name: "Close review", exact: true }).click();
   await page.getByRole("link", { name: "My appointments", exact: true }).click(); await expect(page.getByRole("heading", { name: "No appointments yet", exact: true })).toBeVisible();
   expect(await counts()).toEqual({ appointments: 0, reservations: 0, audit: 0, receipts: 0 });
   await page.getByRole("link", { name: "Book an appointment", exact: true }).click(); await showTimes(page);
@@ -94,21 +101,27 @@ test("a stale slot refreshes choices, retains details and needs an explicit new 
 
 test("a lost response retries the exact committed request and prevents duplicate confirmation", async ({ page }) => {
   await seedClinic(); await signIn(page); await showTimes(page); await review(page);
-  const bodies: string[] = []; let first = true; let release!: () => void;
+  const bodies: string[] = []; let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   await page.route("**/api/patient/bookings", async (route) => {
     bodies.push(route.request().postData()!);
-    if (first) { first = false; await route.fetch(); await gate; await route.abort("failed"); }
+    if (bodies.length === 1) { await route.fetch(); await gate; await route.abort("failed"); }
+    else if (bodies.length === 2) await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "BOOKING_NOT_READY", error: "Online booking is temporarily unavailable." }) });
     else await route.continue();
   });
   await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
   await expect(page.getByRole("button", { name: "Confirming…", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Edit details", exact: true })).toBeDisabled();
+  await page.keyboard.press("Escape"); await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).toBeVisible();
   release(); await expect(page.getByRole("button", { name: "Retry confirmation", exact: true })).toBeEnabled();
+  await page.keyboard.press("Escape"); await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).toBeVisible();
   await expect(page.getByLabel("Appointment date", { exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Retry confirmation", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Retry confirmation", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Edit details", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Retry confirmation", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Appointment confirmed", exact: true })).toBeVisible();
-  expect(bodies).toHaveLength(2); expect(bodies[0]).toBe(bodies[1]);
+  expect(bodies).toHaveLength(3); expect(bodies[0]).toBe(bodies[1]); expect(bodies[1]).toBe(bodies[2]);
   expect(await counts()).toEqual({ appointments: 1, reservations: 1, audit: 1, receipts: 1 });
 });
 
@@ -138,7 +151,34 @@ test("unconfigured clinics and closed dates show useful empty states", async ({ 
   await signIn(page); await expect(page.getByRole("heading", { name: "Online booking is not available yet", exact: true })).toBeVisible();
   await seedClinic(); await withDatabase(async (client) => { await client.query("INSERT INTO day_overrides (doctor_id, date, mode, reason) VALUES (1, $1, 'closed', 'internal holiday note')", [day()]); });
   await page.reload(); await page.getByLabel("Appointment date", { exact: true }).fill(day()); await page.getByRole("button", { name: "Show times", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("No times available"); await expect(page.locator("main")).not.toContainText("internal holiday note");
+  await expect(page.getByRole("status")).toContainText("The clinic is closed on this date"); await expect(page.locator("main")).not.toContainText("internal holiday note");
+});
+
+test("review modal contains focus and closes without losing details or reserving time", async ({ page }) => {
+  await seedClinic(); await signIn(page); await showTimes(page); await review(page);
+  const dialog = page.getByRole("dialog", { name: "Review your appointment", exact: true });
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Shift+Tab"); await expect(dialog.getByRole("button", { name: "Edit details", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab"); await expect(dialog.getByRole("button", { name: "Close review", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape"); await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Review booking", exact: true })).toBeFocused();
+  await expect(page.getByLabel("Full name", { exact: true })).toHaveValue("Synthetic Visitor");
+  await page.getByRole("button", { name: "Review booking", exact: true }).click();
+  await dialog.getByRole("button", { name: "Edit details", exact: true }).click(); await expect(dialog).not.toBeVisible();
+  expect(await counts()).toEqual({ appointments: 0, reservations: 0, audit: 0, receipts: 0 });
+});
+
+test("a definite setup failure keeps the review editable and can recover without an uncertain-result warning", async ({ page }) => {
+  await seedClinic(); await signIn(page); await showTimes(page); await review(page);
+  await page.route("**/api/patient/bookings", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "BOOKING_NOT_READY", error: "Online booking is temporarily unavailable. Please try again or contact the clinic." }) }));
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Review your appointment", exact: true });
+  await expect(dialog.getByRole("alert")).toContainText("Online booking is temporarily unavailable");
+  await expect(dialog.getByRole("button", { name: "Edit details", exact: true })).toBeEnabled();
+  await expect(dialog).not.toContainText("Confirmation couldn’t be checked");
+  expect((await counts()).appointments).toBe(0);
+  await page.unroute("**/api/patient/bookings"); await dialog.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Appointment confirmed", exact: true })).toBeVisible(); expect((await counts()).appointments).toBe(1);
 });
 
 test("invalid details can be corrected, while an expired session requires sign-in before saving", async ({ page }) => {

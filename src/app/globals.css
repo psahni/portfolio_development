@@ -63,6 +63,7 @@
   .calendar-event { @apply absolute inset-x-1 overflow-hidden rounded-md border-l-2 text-left text-[11px] leading-tight transition-[background-color,box-shadow] focus-visible:z-30 focus-visible:outline-2 focus-visible:outline-offset-1 sm:inset-x-1.5; }
   .calendar-event:hover { box-shadow: 0 1px 6px #183b3712; }
   .calendar-detail::backdrop { background: #183b3726; }
+  .booking-review::backdrop { background: #183b374d; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
