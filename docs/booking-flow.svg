@@ -28,7 +28,7 @@
 <path d="M 608 692 Q 820.0 689 1032 691" fill="none" stroke="#176F64" stroke-width="0.65" opacity=".35" />
 <ellipse cx="633" cy="734" rx="21" ry="21" fill="#E5F6ED" stroke="#176F64" stroke-width="1.4" />
 <text x="633.0" y="719" fill="#176F64" font-size="22" text-anchor="middle"><tspan x="633.0" dy="22">3</tspan></text>
-<text x="674" y="707" fill="#183B37" font-size="23" text-anchor="start"><tspan x="674" dy="23">Retry lookup</tspan></text>
+<text x="674" y="707" fill="#183B37" font-size="20" text-anchor="start"><tspan x="674" dy="20">is_existing_booking_request?</tspan></text>
 <text x="674" y="742" fill="#687D78" font-size="16" text-anchor="start"><tspan x="674" dy="16">Has this request already succeeded?</tspan><tspan x="674" dy="21.6">Look up this user + request ID.</tspan></text>
 <rect x="590" y="920" width="460" height="108" rx="16" fill="white" stroke="#176F64" stroke-width="1.6" />
 <path d="M 608 922 Q 820.0 919 1032 921" fill="none" stroke="#176F64" stroke-width="0.65" opacity=".35" />
@@ -53,7 +53,7 @@
 <polyline points="820,1030 820,1080" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)" />
 <polyline points="820,1200 820,1250" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)" />
 <polyline points="820,800 820,910" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)" />
-<text x="837" y="837" fill="#176F64" font-size="16" text-anchor="start"><tspan x="837" dy="16">New request</tspan></text>
+<text x="837" y="837" fill="#176F64" font-size="16" text-anchor="start"><tspan x="837" dy="16">No — new request</tspan></text>
 <polyline points="820,1370 820,1434" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)" />
 <rect x="590" y="1445" width="460" height="76" rx="16" fill="#E5F6ED" stroke="#176F64" stroke-width="1.6" />
 <path d="M 608 1447 Q 820.0 1444 1032 1446" fill="none" stroke="#176F64" stroke-width="0.65" opacity=".35" />
@@ -65,7 +65,7 @@
 <text x="1210" y="525" fill="#923B50" font-size="22" text-anchor="start"><tspan x="1210" dy="22">Access no longer valid</tspan></text>
 <text x="1210" y="565" fill="#923B50" font-size="16" text-anchor="start"><tspan x="1210" dy="16">Reject the request.</tspan><tspan x="1210" dy="21.6">A waiting request keeps no old privileges.</tspan></text>
 <polyline points="1060,744 1178,744" fill="none" stroke="#176F64" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)" />
-<text x="1084" y="716" fill="#176F64" font-size="14" text-anchor="start"><tspan x="1084" dy="14">Found</tspan></text>
+<text x="1084" y="716" fill="#176F64" font-size="14" text-anchor="start"><tspan x="1084" dy="14">Yes</tspan></text>
 <rect x="1190" y="682" width="400" height="207" rx="16" fill="#E5F6ED" stroke="#A9CDB9" stroke-width="1.6" />
 <path d="M 1208 684 Q 1390.0 681 1572 683" fill="none" stroke="#A9CDB9" stroke-width="0.65" opacity=".35" />
 <text x="1210" y="699" fill="#176F64" font-size="22" text-anchor="start"><tspan x="1210" dy="22">Existing booking request</tspan></text>
@@ -83,7 +83,7 @@
 <text x="86" y="410" fill="#183B37" font-size="18" text-anchor="start"><tspan x="86" dy="18">A and B cannot hold it together.</tspan><tspan x="86" dy="24.3">A books first; B waits.</tspan><tspan x="86" dy="24.3">When A finishes, B checks fresh data.</tspan></text>
 <rect x="64" y="681" width="395" height="218" rx="16" fill="#FFF0DB" stroke="#D9BC83" stroke-width="1.6" />
 <path d="M 82 683 Q 261.5 680 441 682" fill="none" stroke="#D9BC83" stroke-width="0.65" opacity=".35" />
-<text x="86" y="701" fill="#183B37" font-size="22" text-anchor="start"><tspan x="86" dy="22">Why retry lookup comes first</tspan></text>
+<text x="86" y="701" fill="#183B37" font-size="22" text-anchor="start"><tspan x="86" dy="22">Why this check comes first</tspan></text>
 <text x="86" y="746" fill="#183B37" font-size="18" text-anchor="start"><tspan x="86" dy="18">The first attempt may have booked</tspan><tspan x="86" dy="24.3">the slot, but lost its response.</tspan><tspan x="86" dy="24.3">Checking availability first would</tspan><tspan x="86" dy="24.3">reject that user’s own booking.</tspan></text>
 <text x="86" y="855" fill="#865719" font-size="16" text-anchor="start"><tspan x="86" dy="16">Reuse the same request ID on retry.</tspan></text>
 <rect x="64" y="1113" width="395" height="196" rx="16" fill="#FBE8EC" stroke="#D4A4B1" stroke-width="1.6" />
