@@ -21,7 +21,7 @@ function visitLabel(visit: { startsAt: string; endsAt: string }, timezone: strin
 }
 
 export function BookingForm({ initial }: { initial: View }) {
-  const [view, setView] = useState(initial), [date, setDate] = useState(initial.availability.date);
+  const [view, setView] = useState(initial), [date, setDate] = useState(initial.availability.noAvailableDates ? "" : initial.availability.date);
   const [selected, setSelected] = useState<Slot | null>(null);
   const [name, setName] = useState(""), [phone, setPhone] = useState("");
   const [step, setStep] = useState<"choose" | "details" | "review">("choose");
@@ -98,7 +98,7 @@ export function BookingForm({ initial }: { initial: View }) {
         <Button variant="outline" disabled={locked || !date}>{pending === "times" ? "Loading…" : "Show times"}</Button>
       </form>
       {timesError && <p role="alert" className="mt-4 text-sm text-red-800">{timesError}</p>}
-      {date !== availability.date ? <p className="ui-hint mt-5">Select Show times to load this date.</p> : <>
+      {availability.noAvailableDates ? <p role="status" className="ui-hint mt-5 rounded-lg bg-muted p-4">No appointments are available within the booking window. Please check again later or contact the clinic.</p> : date !== availability.date ? <p className="ui-hint mt-5">Select Show times to load this date.</p> : <>
         <h3 className="mt-6 text-sm font-medium">{dateLabel(availability.date)}</h3>
         {availability.slots.length ? <div aria-label="Available times" className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {availability.slots.map((slot) => <button key={slot.startsAt} type="button" disabled={locked} aria-pressed={selected?.startsAt === slot.startsAt} onClick={() => choose(slot)} className="min-h-11 rounded-lg border bg-card px-3 py-3 text-sm transition-colors hover:border-primary hover:bg-available focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 aria-pressed:border-primary aria-pressed:bg-available aria-pressed:text-primary">{slot.label}</button>)}
