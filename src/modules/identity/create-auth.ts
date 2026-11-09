@@ -11,6 +11,7 @@ import type { AuthMailer } from "@/platform/mail";
 import { adminPinPlugin } from "./admin-pin-plugin";
 import { resolveTestAuthMode, TEST_LOGIN_CODE } from "./test-mode";
 import { createAccessChecks } from "./access";
+import { createPatientAccessChecks } from "./patient-access";
 
 type AuthConfiguration = {
   db: ApplicationDatabase;
@@ -21,7 +22,7 @@ type AuthConfiguration = {
   testMode?: boolean;
 };
 
-/** Separate auth boundaries; staff login is mounted in M2.2, patient login remains M4. */
+/** Keep patient and clinic identities, credentials and session checks separate. */
 export function createIdentity({ db, baseURL, patientSecret, staffSecret, mailer, testMode = false }: AuthConfiguration) {
   if (patientSecret === staffSecret || Math.min(patientSecret.length, staffSecret.length) < 32) {
     throw new Error("Distinct patient and staff authentication secrets of at least 32 characters are required.");
@@ -52,9 +53,19 @@ export function createIdentity({ db, baseURL, patientSecret, staffSecret, mailer
     database: drizzleAdapter(db, { provider: "pg", schema: patientAuthTables }),
     advanced: { cookiePrefix: "nuvortiq-patient", useSecureCookies: baseURL.startsWith("https:") },
     emailAndPassword: { enabled: false },
+    hooks: { before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== "/email-otp/send-verification-otp" || ctx.body?.type !== "sign-in") return;
+      const address = typeof ctx.body.email === "string" ? ctx.body.email.trim().toLowerCase() : "";
+      if (!address) return;
+      // Replace the previous code so a resend cannot leave stale attempt counters
+      // in front of the new code. The auth router applies request limits first.
+      await ctx.context.internalAdapter.deleteVerificationByIdentifier(`sign-in-otp-${address}`);
+    }) },
     plugins: [emailOTP({
       ...codeOptions,
-      disableSignUp: testing,
+      // New and returning patients share sign-in. The plugin creates a new patient
+      // only after consuming a valid, freshly requested code (also in local test mode).
+      disableSignUp: false,
       async sendVerificationOTP({ email, otp, type }) {
         if (type !== "sign-in") throw new Error("Unsupported patient verification request.");
         if (!testing) await mailer.sendPatientLoginCode({ email, code: otp });
@@ -100,5 +111,5 @@ export function createIdentity({ db, baseURL, patientSecret, staffSecret, mailer
   });
 
   const access = createAccessChecks(db, staff);
-  return { patient, staff, access };
+  return { patient, staff, access, patientAccess: createPatientAccessChecks(db, patient) };
 }

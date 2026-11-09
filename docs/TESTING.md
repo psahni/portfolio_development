@@ -1,6 +1,6 @@
 # Testing the current MVP
 
-**Available:** shared `/admin` login, protected `/admin/workspace` and sign out. Booking, staff management and PIN-change screens are still pending.
+**Available:** clinic sign-in/workspace, patient sign-in at `/login`, and a protected patient list at `/appointments`. Booking forms, staff management and PIN-change screens are still pending.
 
 **Clinic settings:** After `pnpm db:migrate`, sign in as admin → **Clinic settings**. Enter names, choose a timezone, set appointment rules and add weekly hours. Save and reload to verify persistence. Overlapping/reversed hours must be rejected; removing all intervals closes a day. Staff cannot open this page or change settings.
 
@@ -32,7 +32,14 @@ Open `http://localhost:3000` and choose **Clinic sign in**.
 | Use another email | Returns to Email/PIN with credentials cleared and email available to edit. |
 | Sign out, then visit `/admin/workspace` | Returns to `/admin`. |
 
-Unknown/admin emails receive the same code-request feedback as staff but cannot use staff code login. Real email is not sent in test mode; email-provider setup is a later task. There is no public signup or staff-creation screen yet.
+Unknown/admin emails receive the same code-request feedback as staff but cannot use staff code login. Real email is not sent in test mode; email-provider setup is a later task. New patients are registered automatically after code verification. Local test mode uses a requested `0000`; normal mode requires the delivered email code; staff creation is still pending.
+
+**Patient checks:**
+
+- With `AUTH_TEST_MODE=true`, open `/login`, enter a new synthetic email such as `patient@example.test`, request a code and enter `0000`. No account setup or separate signup is needed; entering an email alone creates no account.
+- Expect **My appointments** and **No appointments yet** for this new account. Booking forms are a separate task; automated tests cover populated lists.
+- Sign out and revisit `/appointments`: it should return to `/login`. Patient sign-in must not open the clinic workspace, and clinic sign-in alone must not open patient appointments.
+- Try an incorrect/expired code, request a new code, and change the email. Errors should be clear; repeated attempts remain limited. With test mode off, code requests report unavailable until email delivery is connected.
 
 Check keyboard navigation, visible focus and mobile widths for overlap or horizontal scrolling. During requests, controls should be disabled; failures should show a retryable error.
 
