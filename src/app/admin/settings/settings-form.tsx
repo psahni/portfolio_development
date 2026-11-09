@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { configurationSchema, DAYS, toMinutes, toTime, type ClinicConfiguration } from "@/modules/clinic/configuration";
 
-const inputClass = "mt-2 h-11 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
+const inputClass = "ui-input";
 type NumericField = "durationMinutes" | "bufferBeforeMinutes" | "bufferAfterMinutes" | "minLeadMinutes" | "bookingHorizonDays";
 const numericFields: { key: NumericField; label: string; min: number; max: number }[] = [
   { key: "durationMinutes", label: "Appointment duration (minutes)", min: 5, max: 240 },
@@ -50,8 +50,8 @@ export function SettingsForm({ initial, timezones }: { initial: ClinicConfigurat
   return (
     <form onSubmit={save} noValidate aria-busy={pending} className="space-y-6">
       <fieldset disabled={pending} className="space-y-6">
-        <section aria-labelledby="clinic-details" className="rounded-2xl border bg-card p-5 sm:p-7">
-          <h2 id="clinic-details" className="text-lg font-semibold">Clinic and doctor</h2>
+        <section aria-labelledby="clinic-details" className="ui-panel">
+          <h2 id="clinic-details" className="text-sm font-semibold">Clinic and doctor</h2>
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             {([
               ["clinicName", "Clinic name", "text"], ["doctorName", "Doctor name", "text"],
@@ -70,8 +70,8 @@ export function SettingsForm({ initial, timezones }: { initial: ClinicConfigurat
             </div>
           </div>
         </section>
-        <section aria-labelledby="appointment-rules" className="rounded-2xl border bg-card p-5 sm:p-7">
-          <h2 id="appointment-rules" className="text-lg font-semibold">Appointment rules</h2>
+        <section aria-labelledby="appointment-rules" className="ui-panel">
+          <h2 id="appointment-rules" className="text-sm font-semibold">Appointment rules</h2>
           <p className="mt-2 text-sm text-muted-foreground">Set the visit length, preparation time and how far ahead patients can book.</p>
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             {numericFields.map(({ key, label, min, max }) => <div key={key}>
@@ -80,8 +80,8 @@ export function SettingsForm({ initial, timezones }: { initial: ClinicConfigurat
             </div>)}
           </div>
         </section>
-        <section aria-labelledby="weekly-hours" className="rounded-2xl border bg-card p-5 sm:p-7">
-          <h2 id="weekly-hours" className="text-lg font-semibold">Weekly hours</h2>
+        <section aria-labelledby="weekly-hours" className="ui-panel">
+          <h2 id="weekly-hours" className="text-sm font-semibold">Weekly hours</h2>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Leave a day closed or add opening hours. Add separate intervals for breaks; each interval must finish on the same day. Use Monday’s Copy to all days to replace the whole week, including closed days. Save settings to apply.</p>
           <div className="mt-6 space-y-5">
             {settings.weeklyHours.map(({ day, intervals }) => <fieldset key={day} className="min-w-0 border-t pt-4" aria-label={`${DAYS[day]} hours`}>

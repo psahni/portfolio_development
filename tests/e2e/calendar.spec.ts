@@ -60,7 +60,11 @@ test("calendar displays available, booked and break times with different colors 
   await expect(page.getByRole("region", { name: "Day calendar", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Day", exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Day", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect((await page.getByRole("heading", { level: 2 }).boundingBox())!.width).toBeGreaterThan(250);
   expect((await page.getByLabel("Calendar date", { exact: true }).boundingBox())!.width).toBeGreaterThan(180);
+  const refreshed = page.waitForResponse((response) => response.url().includes("/api/admin/calendar?") && response.ok());
+  await page.getByRole("button", { name: "Show date", exact: true }).click();
+  await refreshed;
   await expect(slots.locator('[data-kind="appointment"]')).toHaveCount(1);
   await page.screenshot({ path: testInfo.outputPath("mobile-calendar.png"), fullPage: true, animations: "disabled" });
   const view = (await (await page.request.get(`/api/admin/calendar?date=${date}&view=day`)).json()).calendar;
@@ -157,4 +161,51 @@ test("calendar requires admin access and clinic configuration", async ({ page })
   await expect(page.getByRole("link", { name: "Calendar", exact: true })).toHaveCount(0);
   await page.goto("/admin/calendar"); await expect(page).toHaveURL(/\/admin\/workspace$/);
   expect((await page.request.get("/api/admin/calendar")).status()).toBe(403);
+});
+
+test("time-grid events open an accessible details panel with keyboard focus restoration", async ({ page }, testInfo) => {
+  const date = await prepare(page); await seedBooked(date); await showDate(page, date);
+  await page.getByRole("button", { name: "Day", exact: true }).click();
+  const booked = page.getByRole("button", { name: "Booked: 9:20 AM – 9:40 AM", exact: true });
+  await booked.focus(); await page.keyboard.press("Enter");
+  const panel = page.getByRole("dialog");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "Booked appointment", exact: true })).toBeVisible();
+  await expect(panel).toContainText("9:20 AM UTC – 9:40 AM UTC");
+  await expect(panel).toContainText("Reserved time includes preparation buffers.");
+  for (let i = 0; i < 4; i++) { await page.keyboard.press("Tab"); expect(await panel.evaluate((node) => node.contains(document.activeElement))).toBe(true); }
+  await page.screenshot({ path: testInfo.outputPath("calendar-details.png"), fullPage: true, animations: "disabled" });
+  await page.keyboard.press("Escape");
+  await expect(panel).not.toBeVisible(); await expect(booked).toBeFocused();
+  await page.getByRole("button", { name: "Available: 9:00 AM – 9:20 AM", exact: true }).click();
+  await expect(panel.getByRole("heading", { name: "Available appointment", exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "Close details", exact: true }).click();
+  await expect(panel).not.toBeVisible();
+  const data = (await (await page.request.get(`/api/admin/calendar?date=${date}&view=day`)).json()).calendar;
+  expect(data.days[0].events.filter((event: { kind: string }) => event.kind === "appointment")).toHaveLength(1);
+});
+
+test("repeated DST times have separate grid positions and unambiguous detail offsets", async ({ page }, testInfo) => {
+  await prepare(page);
+  const settings = (await (await page.request.get("/api/admin/settings")).json()).settings;
+  settings.timezone = "America/New_York";
+  settings.weeklyHours[6].intervals = [{ start: "00:00", end: "04:00" }];
+  expect((await page.request.put("/api/admin/settings", { headers: { origin: new URL(page.url()).origin }, data: settings })).status()).toBe(200);
+  await seedBooked("2026-11-01", "05:30", "05:50");
+  await seedBooked("2026-11-01", "06:30", "06:50");
+  await showDate(page, "2026-11-01");
+  await page.getByRole("button", { name: "Day", exact: true }).click();
+  const slots = page.getByRole("list", { name: "Slots for 2026-11-01", exact: true });
+  await expect(slots.locator('[data-kind="appointment"]')).toHaveCount(2);
+  await expect(page.getByText("1 AM GMT-4", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 AM GMT-5", { exact: true })).toBeVisible();
+  const positions = await slots.locator('[data-kind="appointment"]').evaluateAll((nodes) => nodes.map((node) => parseFloat((node as HTMLElement).style.top)));
+  expect(positions[1] - positions[0]).toBe(96);
+  await slots.getByRole("button", { name: /GMT-4/ }).click();
+  await expect(page.getByRole("dialog")).toContainText("1:30 AM EDT – 1:50 AM EDT");
+  await page.keyboard.press("Escape");
+  await slots.getByRole("button", { name: /GMT-5/ }).click();
+  await expect(page.getByRole("dialog")).toContainText("1:30 AM EST – 1:50 AM EST");
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: testInfo.outputPath("calendar-dst.png"), fullPage: true, animations: "disabled" });
 });

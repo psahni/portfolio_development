@@ -21,8 +21,8 @@ export function ClinicSummary({ settings }: { settings: ClinicConfiguration }) {
     ["Booking window", `Next ${settings.bookingHorizonDays} ${settings.bookingHorizonDays === 1 ? "day" : "days"}`],
   ];
 
-  return <section aria-label="Saved clinic settings" className="mt-8 space-y-6">
-    <div className="rounded-2xl border bg-card p-6 sm:p-7">
+  return <section aria-label="Saved clinic settings" className="space-y-5">
+    <div className="ui-panel">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0"><p className="mb-2 text-xs font-semibold tracking-[0.14em] text-primary uppercase">Clinic overview</p><h2 className="break-words text-2xl font-semibold tracking-tight">{settings.clinicName}</h2></div>
         <div className="flex min-w-0 max-w-full flex-wrap gap-2"><Button asChild><Link href="/admin/calendar">Calendar</Link></Button><Button asChild variant="outline"><Link href="/admin/availability">Availability</Link></Button><Button asChild variant="outline"><Link href="/admin/settings">Clinic settings</Link></Button></div>
@@ -32,18 +32,18 @@ export function ClinicSummary({ settings }: { settings: ClinicConfiguration }) {
       </dl>
     </div>
     <div className="grid items-start gap-6 lg:grid-cols-2">
-      <section aria-labelledby="saved-rules" className="rounded-2xl border bg-card p-6">
-        <h3 id="saved-rules" className="text-lg font-semibold">Appointment rules</h3>
-        <dl className="mt-4 divide-y">
+      <section aria-labelledby="saved-rules" className="ui-panel">
+        <h3 id="saved-rules" className="text-sm font-semibold">Appointment rules</h3>
+        <dl className="mt-4 divide-y divide-border/60">
           {rules.map(([label, value]) => <div key={label} className="flex flex-wrap justify-between gap-x-5 gap-y-1 py-3 text-sm"><dt className="text-muted-foreground">{label}</dt><dd className="font-medium">{value}</dd></div>)}
         </dl>
       </section>
-      <section aria-labelledby="saved-hours" className="min-w-0 rounded-2xl border bg-card p-6">
-        <h3 id="saved-hours" className="text-lg font-semibold">Weekly hours</h3>
+      <section aria-labelledby="saved-hours" className="ui-panel">
+        <h3 id="saved-hours" className="text-sm font-semibold">Weekly hours</h3>
         <p className="mt-1 break-words text-sm text-muted-foreground">All times in {settings.timezone.replaceAll("_", " ")}.</p>
         <table aria-label="Weekly opening hours" className="mt-4 w-full text-left text-sm">
           <thead><tr className="border-b text-xs text-muted-foreground"><th scope="col" className="pb-3 pr-4 font-medium">Day</th><th scope="col" className="pb-3 font-medium">Hours</th></tr></thead>
-          <tbody className="divide-y">
+          <tbody className="divide-y divide-border/60">
             {settings.weeklyHours.map(({ day, intervals }) => <tr key={day}>
               <th scope="row" className="py-3 pr-4 align-top font-medium">{DAYS[day]}</th>
               <td className="py-3 align-top">{intervals.length ? <ul className="space-y-1">{intervals.map((interval) => <li key={interval.start} className="flex flex-wrap items-baseline gap-x-1"><time dateTime={interval.start} className="whitespace-nowrap">{displayTime(interval.start)}</time><span> – </span><time dateTime={interval.end} className="whitespace-nowrap">{displayTime(interval.end)}</time></li>)}</ul> : <span className="text-muted-foreground">Closed</span>}</td>

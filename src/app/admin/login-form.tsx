@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
+import { KeyRound, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { requestStaffAuth } from "@/modules/identity/client";
 
-const inputClass = "mt-2 h-12 w-full rounded-lg border border-input bg-background px-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
+const inputClass = "ui-input";
 
 export function LoginForm() {
   const router = useRouter();
@@ -51,12 +52,13 @@ export function LoginForm() {
 
   return (
     <form onSubmit={submit} noValidate aria-busy={pending !== null} className="space-y-5">
+      <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2.5 text-xs font-medium">{step === "pin" ? <KeyRound aria-hidden="true" className="size-3.5 text-primary" /> : <Mail aria-hidden="true" className="size-3.5 text-primary" />}{step === "pin" ? "Admin PIN sign-in" : "Staff email-code sign-in"}</div>
       {step === "pin" ? <>
         <div><label htmlFor="email" className="text-sm font-medium">Email</label>
           <input id="email" name="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} disabled={pending !== null} className={inputClass} /></div>
         <div><label htmlFor="pin" className="text-sm font-medium">PIN</label>
           <input id="pin" name="pin" type="password" inputMode="numeric" autoComplete="current-password" maxLength={4} value={pin} onChange={(event) => setPin(event.target.value)} disabled={pending !== null} className={inputClass} />
-          <button type="button" onClick={() => void signIn("request")} disabled={pending !== null} className="mt-3 rounded text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring disabled:opacity-50">{pending === "request" ? "Sending code…" : "Send code"}</button>
+          <div className="mt-3 flex items-center justify-between gap-2 text-xs"><span className="text-muted-foreground">Staff? Use an email code.</span><button type="button" onClick={() => void signIn("request")} disabled={pending !== null} className="rounded font-semibold text-primary underline-offset-4 hover:underline disabled:opacity-50">{pending === "request" ? "Sending code…" : "Send code"}</button></div>
         </div>
       </> : <>
         <p role="status" className="break-words text-sm leading-relaxed text-muted-foreground">If this email has staff access, use your sign-in code below.<br /><span className="font-medium text-foreground">{email}</span></p>
