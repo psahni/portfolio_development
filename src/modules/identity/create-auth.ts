@@ -63,7 +63,9 @@ export function createIdentity({ db, baseURL, patientSecret, staffSecret, mailer
     }) },
     plugins: [emailOTP({
       ...codeOptions,
-      disableSignUp: testing,
+      // New and returning patients share sign-in. The plugin creates a new patient
+      // only after consuming a valid, freshly requested code (also in local test mode).
+      disableSignUp: false,
       async sendVerificationOTP({ email, otp, type }) {
         if (type !== "sign-in") throw new Error("Unsupported patient verification request.");
         if (!testing) await mailer.sendPatientLoginCode({ email, code: otp });

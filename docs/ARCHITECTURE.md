@@ -22,11 +22,13 @@ Admin and staff share the same two-step `/admin` interface, without a role selec
 
 The doctor is the admin. An explicit, idempotent bootstrap creates only the initial admin using an operator-configured email and four-digit PIN. No PIN is hardcoded. The admin adds staff, who receive email login codes; no passwords are used. Admin PIN changes require a staff-scoped admin session and current PIN, and revoke that admin's existing sessions. Forgotten-PIN recovery is later M2 work.
 
+New and returning patients use the same email-code sign-in. Create the patient account only after successful code verification; collect booking details in the later confirmation form. There is no separate patient signup screen.
+
 Use Better Auth with its Drizzle adapter and [email OTP](https://better-auth.com/docs/plugins/email-otp) for patients/approved staff. A small admin-PIN plugin uses library sessions and a separate protected PIN hash. Staff OTP login checks active staff access and rejects admin accounts; the admin uses PIN login instead. Patient registration must never create staff access, and patient sessions cannot open the admin interface, even for the same email. Only the admin creates staff accounts.
 
 Email codes are expiring and single-use. Protect PIN hashes using the server secret and a slow salted hash. Five failed PIN attempts lock the account for 15 minutes using serialized database counters. Use request limits, secure cookies and server-side access checks. SMS login and two-factor setup are deferred.
 
-For local testing only, `AUTH_TEST_MODE=true` enables `0000` for existing active accounts. Email-code users must still request a fresh code; no email is sent in this mode. Admin test login uses `0000` instead of the PIN. Production/non-loopback origins reject test mode. It cannot create users, reset PINs or bypass disabled accounts/lockout.
+For local testing only, `AUTH_TEST_MODE=true` enables requested code `0000` for patient sign-in, including automatic registration of new patients. Staff/admin must already exist and be active. No email is sent in this mode. Admin test login uses `0000` instead of the PIN. Production/non-loopback origins reject test mode. It cannot create clinic accounts, reset PINs or bypass disabled accounts/lockout.
 
 M1 isolates patient and staff identities in separate PostgreSQL auth schemas, endpoint paths and cookies. The [auth revision](specs/AUTH_CODE_REVISION.md) adds bootstrap, access checks and the shared clinic login/workspace. Only required patient/staff login/logout handlers are mounted; codes currently use localhost test mode. Patient listings use explicit account ownership. Staff management, PIN-change screens, real email and booking forms remain future tasks; advanced shared abuse controls are deferred to M6.
 

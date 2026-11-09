@@ -13,11 +13,11 @@ The MVP includes native patient booking and an admin/staff interface. PostgreSQL
 ## Login requirements
 
 - **Shared login page (`/admin`):** Initially show **Email** and **PIN**, with **Send code** below PIN and a **Sign in** button. Admin uses Email + PIN. Staff enter Email and choose Send code; the form switches to only **Code** and **Sign in**, retaining the email from step one. No role selector; the server rejects staff PIN login.
-- **Patient:** Enter email, receive a one-time code and sign in to access only their own bookings.
+- **Patient:** Enter email and verify a one-time code. Create a new patient automatically after verification; no separate signup. Then continue to booking details and confirmation. Patients can access only their own bookings.
 - **Doctor/admin:** Bootstrap creates the initial admin with an email and four-digit PIN. Sign in through `/admin` using that PIN; no emailed login code. The admin can change the PIN later.
 - **Staff:** The admin adds the account and permissions. Staff sign in through the admin interface using a one-time code sent by email.
 - **Access:** No password login. Keep patient/admin sessions separate, hash PINs and limit attempts. PIN reset requires the admin session and current PIN. SMS login and two-factor setup are deferred.
-- **Testing:** `0000` works only with explicit localhost test mode and existing active accounts. Email-code login still requires requesting a code. It is rejected in production and cannot reset PINs.
+- **Testing:** `0000` works only with explicit localhost test mode and a requested email code. New patients register after code verification; clinic accounts must already exist and be active. It is rejected in production and cannot reset PINs.
 
 All three approaches below use these login requirements.
 

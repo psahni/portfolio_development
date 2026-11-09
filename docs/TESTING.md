@@ -32,11 +32,11 @@ Open `http://localhost:3000` and choose **Clinic sign in**.
 | Use another email | Returns to Email/PIN with credentials cleared and email available to edit. |
 | Sign out, then visit `/admin/workspace` | Returns to `/admin`. |
 
-Unknown/admin emails receive the same code-request feedback as staff but cannot use staff code login. Real email is not sent in test mode; email-provider setup is a later task. Local test mode never registers unknown patients. Real patient signup requires delivered email verification; staff creation is still pending.
+Unknown/admin emails receive the same code-request feedback as staff but cannot use staff code login. Real email is not sent in test mode; email-provider setup is a later task. New patients are registered automatically after code verification. Local test mode uses a requested `0000`; normal mode requires the delivered email code; staff creation is still pending.
 
 **Patient checks:**
 
-- With `AUTH_TEST_MODE=true`, run `pnpm db:seed-test-patient`. At `/login`, enter `patient@example.test`, request a code and enter `0000`.
+- With `AUTH_TEST_MODE=true`, open `/login`, enter a new synthetic email such as `patient@example.test`, request a code and enter `0000`. No account setup or separate signup is needed; entering an email alone creates no account.
 - Expect **My appointments** and **No appointments yet** for this new account. Booking forms are a separate task; automated tests cover populated lists.
 - Sign out and revisit `/appointments`: it should return to `/login`. Patient sign-in must not open the clinic workspace, and clinic sign-in alone must not open patient appointments.
 - Try an incorrect/expired code, request a new code, and change the email. Errors should be clear; repeated attempts remain limited. With test mode off, code requests report unavailable until email delivery is connected.

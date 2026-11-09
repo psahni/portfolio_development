@@ -16,7 +16,7 @@ export default function PatientLogin() {
       </section>
       <section aria-labelledby="patient-sign-in-heading" className="mx-auto w-full max-w-sm py-3">
         <p className="ui-eyebrow mb-3 hidden md:block">Welcome</p><h2 id="patient-sign-in-heading" className="text-[28px] font-semibold tracking-[-0.04em]">Patient sign in</h2>
-        <p className="mt-3 mb-7 text-sm leading-relaxed text-muted-foreground">Use your email and a one-time code. No password to remember.</p>
+        <p className="mt-3 mb-7 text-sm leading-relaxed text-muted-foreground">Use your email and a one-time code. New here? Your account is created after you verify the code.</p>
         <PatientLoginForm />
         <p className="mt-7 border-t pt-5 text-xs leading-relaxed text-muted-foreground">Doctor or clinic staff? <Link href="/admin" className="font-medium text-primary underline-offset-4 hover:underline">Clinic sign in</Link></p>
       </section>

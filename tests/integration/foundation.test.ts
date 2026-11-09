@@ -416,7 +416,7 @@ describe("admin PIN", () => {
 });
 
 describe("local test master code", () => {
-  it("allows 0000 only with opt-in, existing accounts and a requested email code", async () => {
+  it("requires opt-in and a requested code; new patients register automatically but admin/staff must exist", async () => {
     const testIdentity = makeIdentity(true);
     const before = mailbox.length;
     expect((await adminLogin("0000", testIdentity)).status).toBe(200);
@@ -430,7 +430,9 @@ describe("local test master code", () => {
       expect((await testIdentity[audience].api.signInEmailOTP({ body: { email, otp: "0000" }, asResponse: true })).status).toBeGreaterThanOrEqual(400);
     }
     await testIdentity.patient.api.sendVerificationOTP({ body: { email: "new-test-user@example.test", type: "sign-in" } });
-    expect((await testIdentity.patient.api.signInEmailOTP({ body: { email: "new-test-user@example.test", otp: "0000" }, asResponse: true })).status).toBeGreaterThanOrEqual(400);
+    expect(await database.db.select().from(patientUser).where(eq(patientUser.email, "new-test-user@example.test"))).toHaveLength(0);
+    expect((await testIdentity.patient.api.signInEmailOTP({ body: { email: "new-test-user@example.test", otp: "0000" }, asResponse: true })).status).toBe(200);
+    expect(await database.db.select().from(staffUser).where(eq(staffUser.email, "new-test-user@example.test"))).toHaveLength(0);
     expect(mailbox).toHaveLength(before);
   });
   it("test code never bypasses inactive accounts", async () => {

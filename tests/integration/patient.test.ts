@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { Client } from "pg";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -153,11 +151,24 @@ describe("patient email-code HTTP boundary", () => {
     clientNumber++;
     expect((await handle(request("sign-in/email-otp", { email, otp: "0000" }))).status).toBe(200);
   });
-  it("does not create unknown patients in localhost test mode", async () => {
-    const unknown = "unknown-local@example.test";
-    expect((await handle(request("email-otp/send-verification-otp", { email: unknown, type: "sign-in" }))).status).toBe(200);
+  it("creates a new local patient only after a requested code is verified and reuses that account later", async () => {
+    const unknown = "new-local@example.test";
+    const users = () => database.db.select().from(patientUser).where(eq(patientUser.email, unknown));
     expect((await handle(request("sign-in/email-otp", { email: unknown, otp: "0000" }))).status).toBeGreaterThanOrEqual(400);
-    expect(await database.db.select().from(patientUser).where(eq(patientUser.email, unknown))).toHaveLength(0);
+    expect(await users()).toHaveLength(0);
+    expect((await handle(request("email-otp/send-verification-otp", { email: unknown, type: "sign-in" }))).status).toBe(200);
+    expect(await users()).toHaveLength(0);
+    expect((await handle(request("sign-in/email-otp", { email: unknown, otp: "1111" }))).status).toBeGreaterThanOrEqual(400);
+    expect(await users()).toHaveLength(0);
+    const response = await handle(request("sign-in/email-otp", { email: unknown, otp: "0000" }));
+    const signedIn = sessionHeaders(response);
+    const [created] = await users(); expect(created.emailVerified).toBe(true);
+    expect(await service.list(signedIn)).toEqual([]);
+    expect(await database.db.select().from(staffUser).where(eq(staffUser.email, unknown))).toHaveLength(0);
+    clientNumber++;
+    await handle(request("email-otp/send-verification-otp", { email: unknown, type: "sign-in" }));
+    expect((await handle(request("sign-in/email-otp", { email: unknown, otp: "0000" }))).status).toBe(200);
+    expect((await users()).map((row) => row.id)).toEqual([created.id]);
   });
   it("keeps the latest requested code usable when further code requests are rate limited", async () => {
     for (let i = 0; i < 3; i++) expect((await handle(request("email-otp/send-verification-otp", { email, type: "sign-in" }))).status).toBe(200);
@@ -216,17 +227,5 @@ describe("patient email-code HTTP boundary", () => {
     for (const body of [{ email: "invalid", type: "sign-in" }, { email, type: "email-verification" }, { email, type: "sign-in", role: "admin" }]) {
       expect((await handle(request("email-otp/send-verification-otp", body))).status).toBe(400);
     }
-  });
-});
-
-describe("explicit local test patient", () => {
-  it("seeds idempotently without a session or verified email, and rejects disabled test mode", async () => {
-    const run = promisify(execFile), env = { ...process.env, APP_URL: baseURL, DATABASE_URL: database.pool.options.connectionString!, PATIENT_AUTH_SECRET: patientSecret, STAFF_AUTH_SECRET: staffSecret, AUTH_TEST_MODE: "true" };
-    const args = ["--import", "tsx", "scripts/seed-test-patient.ts"];
-    await run(process.execPath, args, { env }); await run(process.execPath, args, { env });
-    const rows = await database.db.select().from(patientUser).where(eq(patientUser.email, "patient@example.test"));
-    expect(rows).toHaveLength(1); expect(rows[0].emailVerified).toBe(false);
-    expect(await database.db.select().from(patientSession).where(eq(patientSession.userId, rows[0].id))).toHaveLength(0);
-    await expect(run(process.execPath, args, { env: { ...env, AUTH_TEST_MODE: "false" } })).rejects.toBeDefined();
   });
 });

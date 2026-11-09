@@ -20,7 +20,6 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:bootstrap-admin": "node --conditions=react-server --import tsx scripts/bootstrap-admin.ts",
-    "db:seed-test-patient": "tsx scripts/seed-test-patient.ts",
     "db:local": "tsx scripts/local-postgres.ts"
   },
   "dependencies": {

@@ -105,13 +105,23 @@ test("expired codes show feedback and a new code can be requested", async ({ pag
   expect((await page.request.post("/api/auth/patient/sign-in/email-otp", { headers: { origin }, data: { email: "patient@example.test", otp: "0000" } })).status()).toBeGreaterThanOrEqual(400);
 });
 
-test("unknown local patients cannot register through test code and can change email", async ({ page }) => {
-  await requestCode(page, "unknown@example.test");
-  await page.getByLabel("Code", { exact: true }).fill("0000"); await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.locator("main").getByRole("alert")).toBeVisible(); await expect(page).toHaveURL(/\/login$/);
+test("new patients register through the same code sign-in without an account-creation screen", async ({ page }) => {
+  const account = () => withDatabase(async (client) => (await client.query("SELECT id FROM patient_auth.\"user\" WHERE email = 'new-visitor@example.test'")).rows);
+  expect(await account()).toHaveLength(0);
+  await requestCode(page, "new-visitor@example.test");
+  expect(await account()).toHaveLength(0);
   await page.getByRole("button", { name: "Use another email", exact: true }).click();
-  await expect(page.getByLabel("Email", { exact: true })).toHaveValue("unknown@example.test");
-  expect(await withDatabase(async (client) => (await client.query("SELECT id FROM patient_auth.\"user\" WHERE email = 'unknown@example.test'")).rowCount)).toBe(0);
+  await expect(page.getByLabel("Email", { exact: true })).toHaveValue("new-visitor@example.test");
+  await page.getByRole("button", { name: "Send code", exact: true }).click();
+  await page.getByLabel("Code", { exact: true }).fill("1111"); await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.locator("main").getByRole("alert")).toBeVisible();
+  expect(await account()).toHaveLength(0);
+  await page.getByLabel("Code", { exact: true }).fill("0000"); await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "No appointments yet", exact: true })).toBeVisible();
+  const [created] = await account(); expect(created.id).toBeTruthy();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await signIn(page, "new-visitor@example.test");
+  expect((await account()).map((row) => row.id)).toEqual([created.id]);
 });
 
 test("same-email patient and admin sessions stay independent, including sign-out", async ({ page }) => {
