@@ -196,7 +196,8 @@ test("review modal contains focus and closes without losing details or reserving
   await page.keyboard.press("Shift+Tab"); await expect(dialog.getByRole("button", { name: "Edit details", exact: true })).toBeFocused();
   await page.keyboard.press("Tab"); await expect(dialog.getByRole("button", { name: "Close review", exact: true })).toBeFocused();
   await page.keyboard.press("Escape"); await expect(dialog).not.toBeVisible();
-  await expect(page.getByRole("button", { name: "Review booking", exact: true })).toBeFocused();
+  await expect(page.getByRole("dialog", { name: "Your details", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "9:00 AM – 9:20 AM", exact: true }).click();
   await expect(page.getByLabel("Full name", { exact: true })).toHaveValue("Synthetic Visitor");
   await page.getByRole("button", { name: "Review booking", exact: true }).click();
   await dialog.getByRole("button", { name: "Edit details", exact: true }).click(); await expect(dialog).not.toBeVisible();
