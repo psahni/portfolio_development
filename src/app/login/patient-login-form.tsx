@@ -7,7 +7,7 @@ import { Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { requestPatientAuth } from "@/modules/identity/client";
 
-export function PatientLoginForm() {
+export function PatientLoginForm({ destination = "/appointments" }: { destination?: "/book" | "/appointments" }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -29,7 +29,7 @@ export function PatientLoginForm() {
         setEmail(address); setCode(""); setStep("code");
       } else {
         await requestPatientAuth("sign-in/email-otp", { email: address, otp: code });
-        router.replace("/appointments"); router.refresh();
+        router.replace(destination); router.refresh();
       }
     } catch (failure) {
       setError(failure instanceof Error && failure.message !== "Failed to fetch" ? failure.message : "Unable to connect. Please try again.");

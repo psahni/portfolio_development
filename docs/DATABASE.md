@@ -15,7 +15,7 @@ Use **PostgreSQL**, **Drizzle ORM** and **Drizzle Kit** for one clinic, one bran
 | `weekly_hours`, `day_overrides` | Normal weekly hours; a clinic-local date's holiday or replacement special hours. |
 | `appointments` | Explicit patient link or staff creator, encrypted contact details, UTC times and booked timezone/duration/buffer snapshots. Cancellation details follow later. |
 | `booking_audit`, `booking_requests` | Creation audit and actor-scoped confirmation receipts for safe retries within 24 hours; expired keys cannot be reused. |
-| `reservations` | UTC occupancy with PostgreSQL non-overlap protection. Manual breaks work now; booking will add appointment occupancy, including buffers. |
+| `reservations` | UTC occupancy with PostgreSQL non-overlap protection. Manual breaks and confirmed appointment occupancy, including buffers. |
 | Calendar connection/projection tables | Encrypted credentials, event IDs and sync status. |
 | `outbox_jobs`, `notifications` | Saved integration work, notice status, retries and provider message IDs. |
 

@@ -16,6 +16,9 @@ import { createSchedulingService } from "@/modules/scheduling/service";
 import { createBookingService } from "@/modules/booking/service";
 import { createPatientBookingAccess } from "@/modules/booking/access";
 import { createContactProtection } from "@/modules/booking/contact-protection";
+import { createHostedBookingService } from "@/modules/booking/hosted";
+import { createHostedAvailabilityHandler, createPatientBookingHandler } from "@/modules/booking/hosted-http";
+import { createPatientAppointmentsService } from "@/modules/booking/patient-appointments";
 import { unconfiguredMailer } from "@/platform/mail";
 
 const baseURL = "http://localhost:3000", date = "2026-11-10";
@@ -30,6 +33,14 @@ let now: Date, adminId: string, staffId: string, patientId: string, otherPatient
 let originalPatientSessions: (typeof patientSession.$inferSelect)[], originalStaffSessions: (typeof staffSession.$inferSelect)[];
 const credentials: Record<string, Headers> = { anonymous: new Headers() };
 const clock = () => now;
+const bookingHandler = () => createPatientBookingHandler(() => service, () => baseURL);
+const availabilityHandler = () => createHostedAvailabilityHandler(() => createHostedBookingService(database.db, identity.patientAccess, clock));
+function httpRequest(path: string, role = "patient", body?: unknown, origin: string | null = baseURL, method = body === undefined ? "GET" : "POST") {
+  const headers = new Headers(credentials[role]);
+  if (origin !== null) headers.set("origin", origin);
+  headers.set("content-type", "application/json");
+  return new Request(`${baseURL}/api/patient/${path}`, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+}
 function configuration() {
   const config = { ...emptyConfiguration(), clinicName: "Booking Test", doctorName: "Synthetic Doctor", timezone: "UTC", minLeadMinutes: 0 };
   config.weeklyHours.forEach((day) => { day.intervals = [{ start: "09:00", end: "12:00" }]; });
@@ -310,5 +321,200 @@ describe("authoritative booking checks", () => {
     await database.db.insert(reservations).values({ doctorId: 1, kind: "block", startsAt: new Date("2026-11-09T23:50Z"), endsAt: new Date(`${date}T00:20Z`) });
     await expect(service.bookPatient(credentials.patient, input(`${date}T00:00:00Z`))).rejects.toMatchObject({ code: "SLOT_UNAVAILABLE" });
     expect((await service.bookPatient(credentials.patient, input(`${date}T00:20:00Z`))).status).toBe("confirmed");
+  });
+});
+
+describe("hosted patient booking HTTP", () => {
+  const defaultDay = async () => {
+    const response = await availabilityHandler()(httpRequest("availability"));
+    expect(response.status).toBe(200);
+    return (await response.json()).availability;
+  };
+  it("keeps today selected when it still has bookable slots", async () => {
+    const view = await defaultDay();
+    expect(view).toMatchObject({ today: "2026-11-09", date: "2026-11-09", noAvailableDates: false });
+    expect(view.slots[0].startsAt).toBe("2026-11-09T09:00:00.000Z");
+    expect(await counts()).toEqual([0, 0, 0, 0]);
+  });
+  it.each(["after closing", "date closure", "weekly closure", "fully occupied"])("selects the next available day when today is unavailable: %s", async (reason) => {
+    if (reason === "after closing") now = new Date("2026-11-09T12:00:00Z");
+    if (reason === "date closure") await schedule.saveOverride(credentials.admin, { date: "2026-11-09", mode: "closed" });
+    if (reason === "weekly closure") {
+      const config = configuration(); config.weeklyHours[0].intervals = []; await clinic.save(credentials.admin, config);
+    }
+    if (reason === "fully occupied") await database.db.insert(reservations).values({ doctorId: 1, kind: "block", startsAt: new Date("2026-11-09T09:00Z"), endsAt: new Date("2026-11-09T12:00Z") });
+    const before = await counts(), view = await defaultDay();
+    expect(view).toMatchObject({ today: "2026-11-09", date, closed: false, noAvailableDates: false });
+    expect(view.slots[0].startsAt).toBe(`${date}T09:00:00.000Z`); expect(await counts()).toEqual(before);
+    const explicit = await (await availabilityHandler()(httpRequest("availability?date=2026-11-09"))).json();
+    expect(explicit.availability).toMatchObject({ date: "2026-11-09", slots: [], noAvailableDates: false });
+  });
+  it("skips multiple closed or occupied dates instead of assuming tomorrow is available", async () => {
+    now = new Date("2026-11-09T12:00Z");
+    await schedule.saveOverride(credentials.admin, { date, mode: "closed", reason: "private holiday note" });
+    await database.db.insert(reservations).values({ doctorId: 1, kind: "block", startsAt: new Date("2026-11-11T09:00Z"), endsAt: new Date("2026-11-11T12:00Z"), reason: "private break note" });
+    const view = await defaultDay(); expect(view.date).toBe("2026-11-12"); expect(view.slots).toHaveLength(9);
+    expect(JSON.stringify(view)).not.toContain("private"); expect(await counts()).toEqual([0, 1, 0, 0]);
+  });
+  it("respects minimum notice when finding the first bookable date", async () => {
+    await clinic.save(credentials.admin, { ...configuration(), minLeadMinutes: 2880 });
+    expect((await defaultDay()).date).toBe("2026-11-11"); expect(await counts()).toEqual([0, 0, 0, 0]);
+  });
+  it("reports an empty booking window without going beyond its last date", async () => {
+    now = new Date("2026-11-09T12:00Z");
+    await clinic.save(credentials.admin, { ...configuration(), bookingHorizonDays: 1 });
+    await schedule.saveOverride(credentials.admin, { date, mode: "closed" });
+    expect(await defaultDay()).toMatchObject({ today: "2026-11-09", date: "2026-11-09", lastDate: date, slots: [], noAvailableDates: true });
+    const explicit = await (await availabilityHandler()(httpRequest(`availability?date=${date}`))).json();
+    expect(explicit.availability).toMatchObject({ date, closed: true, noAvailableDates: false }); expect(await counts()).toEqual([0, 0, 0, 0]);
+  });
+  it("honors the exact horizon time even when the last calendar date has opening hours", async () => {
+    const config = { ...configuration(), bookingHorizonDays: 1 }; config.weeklyHours[0].intervals = [];
+    await clinic.save(credentials.admin, config);
+    // Tomorrow's 9 AM opening is beyond now + one day (tomorrow at 8 AM).
+    expect(await defaultDay()).toMatchObject({ lastDate: date, slots: [], noAvailableDates: true });
+  });
+  it("uses the clinic's current date when it differs from the UTC date", async () => {
+    now = new Date("2026-11-09T20:00Z");
+    await clinic.save(credentials.admin, { ...configuration(), timezone: "Asia/Kolkata" });
+    await schedule.saveOverride(credentials.admin, { date, mode: "closed" });
+    const view = await defaultDay(); expect(view).toMatchObject({ today: date, date: "2026-11-11", timezone: "Asia/Kolkata" });
+    expect(view.slots[0].startsAt).toBe("2026-11-11T03:30:00.000Z");
+  });
+  it.each(["2026-03-08", "2026-11-01"])("finds the next clinic date across DST on %s", async (day) => {
+    now = new Date(day === "2026-03-08" ? "2026-03-07T23:00Z" : "2026-10-31T22:00Z");
+    const config = { ...configuration(), timezone: "America/New_York" };
+    config.weeklyHours.forEach((entry) => { entry.intervals = [{ start: "00:00", end: "05:00" }]; });
+    await clinic.save(credentials.admin, config);
+    const view = await defaultDay(); expect(view.date).toBe(day);
+    expect(view.slots).toEqual((await schedule.preview(credentials.admin, day)).slots.map(({ startsAt, endsAt, label }) => ({ startsAt, endsAt, label })));
+    expect(await counts()).toEqual([0, 0, 0, 0]);
+  });
+  it("distinguishes missing-key setup failure before a booking attempt and permits recovery", async () => {
+    const notReady = createPatientBookingHandler(() => { createContactProtection(undefined); return service; }, () => baseURL);
+    const response = await notReady(httpRequest("bookings", "patient", input()));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ code: "BOOKING_NOT_READY", error: "Online booking is temporarily unavailable. Please try again or contact the clinic." });
+    expect(await counts()).toEqual([0, 0, 0, 0]);
+    expect((await bookingHandler()(httpRequest("bookings", "patient", input()))).status).toBe(200);
+  });
+  it("allows tomorrow within the clinic window unless a saved closure replaces weekly hours", async () => {
+    now = new Date("2026-11-09T15:30:00Z");
+    await clinic.save(credentials.admin, { ...configuration(), timezone: "Asia/Kolkata", minLeadMinutes: 60, bookingHorizonDays: 15 });
+    const read = async () => (await (await availabilityHandler()(httpRequest(`availability?date=${date}`))).json()).availability;
+    const tomorrow = await read();
+    expect(tomorrow).toMatchObject({ today: "2026-11-09", date, lastDate: "2026-11-24", closed: false });
+    expect(tomorrow.slots[0].startsAt).toBe(`${date}T03:30:00.000Z`);
+    await schedule.saveOverride(credentials.admin, { date, mode: "closed", reason: "private closure" });
+    expect(await read()).toMatchObject({ closed: true, slots: [] });
+    await schedule.saveOverride(credentials.admin, { date, mode: "weekly" });
+    expect((await read()).slots).toEqual(tomorrow.slots);
+    expect(await counts()).toEqual([0, 0, 0, 0]);
+  });
+  it("returns free visit times and verified email without internal occupancy or notes", async () => {
+    await schedule.addBreak(credentials.admin, { date, start: "09:00", end: "09:20", reason: "private staff note" });
+    await schedule.saveOverride(credentials.admin, { date, mode: "custom", intervals: [{ start: "09:00", end: "11:00" }], reason: "internal override note" });
+    const response = await availabilityHandler()(httpRequest(`availability?date=${date}&patientUserId=${otherPatientId}`));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store"); expect(response.headers.get("Vary")).toBe("Cookie");
+    const data = await response.json();
+    expect(data.email).toBe(adminEmail);
+    expect(data.availability).toMatchObject({ clinicName: "Booking Test", doctorName: "Synthetic Doctor", timezone: "UTC", date });
+    expect(data.availability.slots).toEqual((await schedule.preview(credentials.admin, date)).slots.map(({ startsAt, endsAt, label }) => ({ startsAt, endsAt, label })));
+    for (const secret of ["private staff note", "internal override note", "occupiedStart", "blocks", "override", "patientUserId", patientId, "session", "token"]) expect(JSON.stringify(data)).not.toContain(secret);
+    expect(await counts()).toEqual([0, 1, 0, 0]);
+  });
+  it.each(["anonymous", "admin", "staff"])("rejects %s cookies for availability and confirmation", async (role) => {
+    for (const response of [await availabilityHandler()(httpRequest(`availability?date=${date}`, role)), await bookingHandler()(httpRequest("bookings", role, input()))]) {
+      expect(response.status).toBe(401); expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+      expect(await response.json()).toMatchObject({ code: "SIGN_IN_REQUIRED" });
+    }
+    expect(await counts()).toEqual([0, 0, 0, 0]);
+  });
+  it.each(["revoked", "expired", "unverified"])("rejects %s patients for reads, writes and successful-request retries", async (kind) => {
+    const value = input(); expect((await bookingHandler()(httpRequest("bookings", "patient", value))).status).toBe(200);
+    if (kind === "revoked") await database.db.delete(patientSession).where(eq(patientSession.userId, patientId));
+    if (kind === "expired") await database.db.update(patientSession).set({ expiresAt: new Date(0) }).where(eq(patientSession.userId, patientId));
+    if (kind === "unverified") await database.db.update(patientUser).set({ emailVerified: false }).where(eq(patientUser.id, patientId));
+    expect((await availabilityHandler()(httpRequest(`availability?date=${date}`))).status).toBe(401);
+    expect((await bookingHandler()(httpRequest("bookings", "patient", value))).status).toBe(401);
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+  it("checks trusted origin, method, JSON and strict booking fields", async () => {
+    for (const origin of [null, "https://untrusted.example"]) expect((await bookingHandler()(httpRequest("bookings", "patient", input(), origin))).status).toBe(403);
+    expect((await bookingHandler()(httpRequest("bookings"))).status).toBe(405);
+    expect((await availabilityHandler()(httpRequest("availability", "patient", {}))).status).toBe(405);
+    for (const extra of [{ email: "forged@example.test" }, { patientUserId: otherPatientId }, { role: "admin" }, { endsAt: `${date}T12:00:00Z` }, { phone: "123" }, { requestId: "invalid" }]) {
+      expect((await bookingHandler()(httpRequest("bookings", "patient", { ...input(), ...extra }))).status).toBe(400);
+    }
+    const malformed = new Request(`${baseURL}/api/patient/bookings`, { method: "POST", headers: { cookie: credentials.patient.get("cookie")!, origin: baseURL, "Content-Type": "application/json" }, body: "{" });
+    expect((await bookingHandler()(malformed)).status).toBe(400);
+    expect(await counts()).toEqual([0, 0, 0, 0]);
+  });
+  it("commits one explicitly owned appointment and returns a private minimal receipt", async () => {
+    const response = await bookingHandler()(httpRequest("bookings", "patient", input()));
+    expect(response.status).toBe(200); expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    const { receipt } = await response.json();
+    expect(receipt).toMatchObject({ status: "confirmed", startsAt: `${date}T09:00:00.000Z` });
+    expect(JSON.stringify(receipt)).not.toContain(adminEmail); expect(JSON.stringify(receipt)).not.toContain("contact");
+    const [saved] = await database.db.select().from(appointments);
+    expect(saved.patientUserId).toBe(patientId);
+    expect(protection.decrypt(saved.id, saved.contactCiphertext)).toEqual({ name: "Synthetic Patient", phone: "+919876543210", email: adminEmail });
+    const listing = createPatientAppointmentsService(database.db, identity.patientAccess, clock);
+    expect((await listing.list(credentials.patient)).map((row) => row.id)).toEqual([receipt.id]);
+    expect(await listing.list(credentials.other)).toEqual([]);
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+  it("replays simultaneous confirmations and a lost-response retry even after slot rules change", async () => {
+    const value = input();
+    const responses = await Promise.all([bookingHandler()(httpRequest("bookings", "patient", value)), bookingHandler()(httpRequest("bookings", "patient", value))]);
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    const data = await Promise.all(responses.map((response) => response.json())); expect(data[0]).toEqual(data[1]);
+    await clinic.save(credentials.admin, { ...configuration(), durationMinutes: 30 });
+    expect(await (await bookingHandler()(httpRequest("bookings", "patient", value))).json()).toEqual(data[0]);
+    expect((await bookingHandler()(httpRequest("bookings", "patient", { ...value, name: "Changed" }))).status).toBe(409);
+    now = new Date(now.getTime() + 24 * 60 * 60_000);
+    expect((await bookingHandler()(httpRequest("bookings", "patient", value))).status).toBe(409);
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+  it("competes with receptionist booking under the shared lock and refreshes only free times", async () => {
+    const results = await Promise.allSettled([bookingHandler()(httpRequest("bookings", "patient", input())), service.bookForClinic(credentials.staff, clinicInput())]);
+    const patient = results[0]; expect(patient.status).toBe("fulfilled");
+    if (patient.status !== "fulfilled") return;
+    if (patient.value.status === 200) expect(results[1].status).toBe("rejected");
+    else { expect(patient.value.status).toBe(409); expect(await patient.value.json()).toMatchObject({ code: "SLOT_UNAVAILABLE" }); expect(results[1].status).toBe("fulfilled"); }
+    const { availability } = await (await availabilityHandler()(httpRequest(`availability?date=${date}`))).json();
+    expect(availability.slots.some((slot: { startsAt: string }) => slot.startsAt === `${date}T09:00:00.000Z`)).toBe(false);
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+  it("reports closed dates, booking-window validation and an unconfigured clinic safely", async () => {
+    for (const value of ["2026-02-30", "not-a-date", "2026-11-08", "2027-01-01"]) expect((await availabilityHandler()(httpRequest(`availability?date=${value}`))).status).toBe(400);
+    await schedule.saveOverride(credentials.admin, { date, mode: "closed", reason: "private reason" });
+    const closed = await (await availabilityHandler()(httpRequest(`availability?date=${date}`))).json();
+    expect(closed.availability.slots).toEqual([]); expect(JSON.stringify(closed)).not.toContain("private reason");
+    await database.db.delete(clinicSettings);
+    expect((await (await availabilityHandler()(httpRequest("availability"))).json()).availability.configured).toBe(false);
+    expect((await bookingHandler()(httpRequest("bookings", "patient", input()))).status).toBe(409);
+  });
+  it.each(["2026-03-08", "2026-11-01"])("matches admin slot rules and UTC instants across DST on %s", async (day) => {
+    now = new Date(`${day}T00:00:00Z`);
+    const config = { ...configuration(), timezone: "America/New_York", bufferBeforeMinutes: 5, bufferAfterMinutes: 5 };
+    config.weeklyHours.forEach((entry) => { entry.intervals = [{ start: "00:00", end: "05:00" }]; });
+    await clinic.save(credentials.admin, config);
+    const { availability } = await (await availabilityHandler()(httpRequest(`availability?date=${day}`))).json();
+    expect(availability.slots).toEqual((await schedule.preview(credentials.admin, day)).slots.map(({ startsAt, endsAt, label }) => ({ startsAt, endsAt, label })));
+    const chosen = availability.slots.at(-1);
+    const response = await bookingHandler()(httpRequest("bookings", "patient", input(chosen.startsAt)));
+    expect(response.status).toBe(200); expect((await response.json()).receipt.endsAt).toBe(chosen.endsAt);
+  });
+  it("redacts database failures, rolls back and can retry the same HTTP request", async () => {
+    await database.db.execute(sql`CREATE FUNCTION fail_hosted_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'secret internal database detail'; END $$`);
+    await database.db.execute(sql`CREATE TRIGGER fail_hosted_audit BEFORE INSERT ON booking_audit FOR EACH ROW EXECUTE FUNCTION fail_hosted_audit()`);
+    const value = input();
+    try {
+      const response = await bookingHandler()(httpRequest("bookings", "patient", value));
+      expect(response.status).toBe(503); expect(await response.text()).not.toContain("secret internal"); expect(await counts()).toEqual([0, 0, 0, 0]);
+    } finally { await database.db.execute(sql`DROP TRIGGER fail_hosted_audit ON booking_audit`); await database.db.execute(sql`DROP FUNCTION fail_hosted_audit()`); }
+    expect((await bookingHandler()(httpRequest("bookings", "patient", value))).status).toBe(200); expect(await counts()).toEqual([1, 1, 1, 1]);
   });
 });

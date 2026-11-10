@@ -2,15 +2,15 @@
 
 Native booking for one clinic, one branch and one doctor. The selected patient-booking-first approach is delivered through small, reviewed tasks.
 
-**Current delivery:** `/admin` supports clinic sign-in; `/login` supports patient email codes and `/appointments` shows only that patient's linked bookings. Real email delivery and booking forms are still pending.
+**Current delivery:** `/admin` supports clinic sign-in; `/login` supports patient email codes and `/appointments` shows only that patient's linked bookings. `/book` supports patient slot selection, details, review and committed confirmation. Real email delivery is still pending.
 
 **Testing now:** Follow the [testing steps](docs/TESTING.md). With localhost `AUTH_TEST_MODE=true`, open `/login`, enter a synthetic email such as `patient@example.test`, request a code and enter `0000`. New patients are created automatically after the code is checked; no signup form or seed command is needed.
 
 **Clinic setup (#6):** After migration, sign in as admin and open **Clinic settings** in the workspace. Save clinic/doctor details, select a timezone, set appointment rules and add weekly opening intervals. Closed days have no intervals; settings persist across restarts.
 
-**Availability (#7):** Open **Availability** in the workspace to preview slots, mark a holiday, set special hours for one date or add/remove a personal break. Restoring weekly hours keeps separately saved breaks. Previewing does not reserve a slot; booking forms follow separately.
+**Availability (#7):** Open **Availability** in the workspace to preview slots, mark a holiday, set special hours for one date or add/remove a personal break. Restoring weekly hours keeps separately saved breaks. Previewing and selecting a slot do not reserve it; `/book` confirms through the shared booking service.
 
-**Doctor calendar (#20):** Open **Calendar** for Day/Week views: green Available, red Booked and amber Break cards, with text labels. Navigate dates or refresh to see current data in the clinic timezone. This view reads existing reservations; the shared booking service saves occupancy, while booking forms follow separately.
+**Doctor calendar (#20):** Open **Calendar** for Day/Week views: green Available, red Booked and amber Break cards, with text labels. Navigate dates or refresh to see current data in the clinic timezone. This view reads existing reservations, including occupancy saved by patient booking.
 
 ## Run locally
 
@@ -77,4 +77,4 @@ CI is configured for GitHub Actions and runs on pushes and pull requests. Check 
 3. Record changed-file purposes, important logic, checks and limitations in its PR description.
 4. Review the working milestone before expanding to the next slice.
 
-See [implementation plan](docs/IMPLEMENTATION_PLAN.md), [architecture](docs/ARCHITECTURE.md), [database design](docs/DATABASE.md) and [agent guidance](AGENTS.md). The website button will open the native booking page. Selecting a slot will not reserve it; only a committed **Confirm Booking** action will create occupancy and queue Calendar sync.
+See [implementation plan](docs/IMPLEMENTATION_PLAN.md), [architecture](docs/ARCHITECTURE.md), [database design](docs/DATABASE.md) and [agent guidance](AGENTS.md). The admin workspace provides the hosted `/book` link and a copyable HTML website button. Patients sign in, choose a slot, enter name/phone and review before **Confirm booking** creates occupancy. Calendar and notification jobs remain future integration tasks.

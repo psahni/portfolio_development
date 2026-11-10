@@ -14,14 +14,14 @@ export default function Home() {
       <section className="max-w-4xl py-20 md:py-28">
         <p className="ui-eyebrow mb-6 !text-primary">A little less waiting. A little more care.</p>
         <h1 className="text-4xl leading-[1.08] font-semibold tracking-[-0.055em] sm:text-6xl md:text-7xl">Care starts with<br /><span className="text-primary">a simpler appointment.</span></h1>
-        <p className="mt-7 max-w-xl text-base leading-8 text-muted-foreground">Sign in to view your appointments and booking status. Online booking is coming next. Clinic staff can sign in to their workspace.</p>
-        <div className="mt-8 flex flex-wrap items-center gap-3"><Button asChild><Link href="/login">My appointments <ArrowUpRight aria-hidden="true" /></Link></Button><Button asChild variant="outline"><a href="#what-to-expect">What to expect</a></Button></div>
+        <p className="mt-7 max-w-xl text-base leading-8 text-muted-foreground">Choose an available time, review your details and confirm your appointment. Sign in to keep track of your visits in one place.</p>
+        <div className="mt-8 flex flex-wrap items-center gap-3"><Button asChild><Link href="/book">Book appointment <ArrowUpRight aria-hidden="true" /></Link></Button><Button asChild variant="outline"><Link href="/appointments">My appointments</Link></Button></div>
       </section>
       <section id="what-to-expect" aria-label="What to expect" className="mb-16 grid gap-4 scroll-mt-8 md:grid-cols-3">
         {[
           { icon: CalendarDays, title: "A time that works for you", text: "Browse the clinic’s available appointments and choose your preferred time." },
           { icon: ShieldCheck, title: "Your details, kept private", text: "A personal sign-in keeps your bookings separate from the clinic’s staff workspace." },
-          { icon: Heart, title: "Stay connected to your care", text: "Receive appointment updates and guidance if your doctor needs to change plans." },
+          { icon: Heart, title: "Your visits, in one place", text: "See your confirmed appointment times and booking status in My appointments." },
         ].map(({ icon: Icon, title, text }) => (
           <Card key={title}><CardHeader><Icon aria-hidden="true" className="mb-4 size-6 text-primary" /><CardTitle>{title}</CardTitle><CardDescription>{text}</CardDescription></CardHeader></Card>
         ))}
