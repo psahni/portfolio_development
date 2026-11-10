@@ -8,7 +8,7 @@ import type { BookingReceipt } from "@/modules/booking/models";
 export const appointments = pgTable("appointments", {
   id: uuid("id").primaryKey().defaultRandom(),
   doctorId: integer("doctor_id").notNull().references(() => doctorProfile.id),
-  // A future cancellation can detach/release occupancy while retaining appointment history.
+  // Cancellation detaches/releases occupancy while retaining appointment history.
   reservationId: uuid("reservation_id").unique().references(() => reservations.id),
   patientUserId: text("patient_user_id").references(() => patientUser.id),
   createdByStaffId: text("created_by_staff_id").references(() => staffUser.id),
@@ -42,7 +42,7 @@ export const bookingAudit = pgTable("booking_audit", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique("booking_audit_creation").on(table.appointmentId, table.action),
-  check("booking_audit_action", sql`${table.action} = 'created'`),
+  check("booking_audit_action", sql`${table.action} in ('created', 'cancelled')`),
   check("booking_audit_actor", sql`${table.actorKind} in ('patient', 'staff')`),
 ]);
 

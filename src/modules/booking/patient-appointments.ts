@@ -23,7 +23,7 @@ export function createPatientAppointmentsService(db: ApplicationDatabase, access
   async function view(headers: Headers) {
     const appointments = await list(headers), now = clock().getTime();
     const isUpcoming = (appointment: PatientAppointment) => appointment.status === "confirmed" && Date.parse(appointment.endsAt) > now;
-    return { total: appointments.length, upcoming: appointments.filter(isUpcoming), history: appointments.filter((appointment) => !isUpcoming(appointment)).reverse() };
+    return { total: appointments.length, upcoming: appointments.filter(isUpcoming).map((appointment) => ({ ...appointment, canCancel: Date.parse(appointment.startsAt) > now })), history: appointments.filter((appointment) => !isUpcoming(appointment)).reverse() };
   }
   return { list, view };
 }

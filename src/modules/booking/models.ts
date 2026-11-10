@@ -17,6 +17,8 @@ const bookingFields = {
   name, phone,
 };
 export const patientBookingSchema = z.object(bookingFields).strict();
+export const patientCancellationSchema = z.object({ appointmentId: z.uuid() }).strict();
+export type CancellationReceipt = { id: string; status: "cancelled" };
 export const clinicBookingSchema = z.object({ ...bookingFields, email }).strict();
 export type PatientContact = z.infer<typeof contactSchema>;
 export type BookingActor = { kind: "patient" | "staff"; userId: string; sessionId: string };
