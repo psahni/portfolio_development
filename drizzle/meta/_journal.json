@@ -36,6 +36,13 @@
       "when": 1794216092669,
       "tag": "0004_shared_booking",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794243619716,
+      "tag": "0005_patient_cancellation",
+      "breakpoints": true
     }
   ]
 }
