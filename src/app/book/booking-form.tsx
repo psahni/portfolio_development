@@ -111,6 +111,7 @@ export function BookingForm({ initial }: { initial: View }) {
       onNameChange={setName} onPhoneChange={setPhone} onReview={review} onClose={() => { if (!locked) { setReturningToDetails(false); setSelected(null); setStep("choose"); setError(""); } }} />}
     <BookingReview open={step === "review" && !!selected} locked={locked} pending={pending === "confirm"} uncertain={uncertain} signInRequired={signInRequired}
       visit={visit} timezone={availability.timezone} name={name} email={email} phone={phone} error={error}
+      onClose={() => { if (!locked) { setReturningToDetails(false); setSelected(null); setStep("choose"); setError(""); } }}
       onEdit={() => { if (!locked) { setReturningToDetails(true); setStep("details"); setError(""); } }} onConfirm={() => void confirm()} />
   </div>;
 }

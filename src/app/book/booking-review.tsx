@@ -9,7 +9,7 @@ type Props = {
   open: boolean; locked: boolean; pending: boolean; uncertain: boolean; signInRequired: boolean;
   visit: { date: string; time: string } | null; timezone: string;
   name: string; email: string; phone: string; error: string;
-  onEdit: () => void; onConfirm: () => void;
+  onClose: () => void; onEdit: () => void; onConfirm: () => void;
 };
 
 function keepFocus(event: KeyboardEvent<HTMLDialogElement>) {
@@ -21,7 +21,7 @@ function keepFocus(event: KeyboardEvent<HTMLDialogElement>) {
 }
 
 export function BookingReview(props: Props) {
-  const { open, locked, pending, uncertain, signInRequired, visit, timezone, name, email, phone, error, onEdit, onConfirm } = props;
+  const { open, locked, pending, uncertain, signInRequired, visit, timezone, name, email, phone, error, onClose, onEdit, onConfirm } = props;
   const panel = useRef<HTMLDialogElement>(null), heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     const dialog = panel.current;
@@ -31,9 +31,9 @@ export function BookingReview(props: Props) {
     return () => { dialog.close(); document.body.style.overflow = overflow; };
   }, [open]);
   return <dialog ref={panel} aria-labelledby="booking-review-title" aria-describedby="booking-review-help" onKeyDown={keepFocus}
-    onCancel={(event) => { event.preventDefault(); if (!locked) onEdit(); }}
+    onCancel={(event) => { event.preventDefault(); if (!locked) onClose(); }}
     className="booking-review fixed inset-0 m-auto max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-xl border bg-card p-5 text-foreground shadow-xl sm:p-6">
-    <div className="flex items-start justify-between gap-4"><h2 id="booking-review-title" ref={heading} tabIndex={-1} className="text-xl font-semibold tracking-tight">Review your appointment</h2><Button type="button" variant="outline" size="sm" aria-label="Close review" disabled={locked} onClick={onEdit}><X aria-hidden="true" /></Button></div>
+    <div className="flex items-start justify-between gap-4"><h2 id="booking-review-title" ref={heading} tabIndex={-1} className="text-xl font-semibold tracking-tight">Review your appointment</h2><Button type="button" variant="outline" size="sm" aria-label="Close review" disabled={locked} onClick={onClose}><X aria-hidden="true" /></Button></div>
     {visit && <div className="my-5 rounded-lg bg-muted p-4 text-sm"><p className="font-medium">{visit.date}</p><p className="mt-2">{visit.time}</p><p className="mt-1 text-xs text-muted-foreground">{timezone}</p></div>}
     <dl className="space-y-4 text-sm"><div><dt className="text-muted-foreground">Name</dt><dd className="mt-1 break-words font-medium">{name}</dd></div><div><dt className="text-muted-foreground">Verified email</dt><dd className="mt-1 break-all">{email}</dd></div><div><dt className="text-muted-foreground">Phone number</dt><dd className="mt-1">{phone}</dd></div></dl>
     <p id="booking-review-help" className="ui-hint mt-5 text-xs">Your time is booked only after confirmation. Availability is checked again when you confirm.</p>
