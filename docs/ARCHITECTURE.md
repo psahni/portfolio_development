@@ -1,6 +1,6 @@
 # Nuvortiq Smart Booking — MVP Architecture
 
-**Status: native MVP; patient-booking-first delivery selected. Foundation, clinic login, scheduling and the shared booking service are implemented. Patient sign-in/listing #10 is merged; hosted patient booking #11 is implemented for review.**
+**Status: native MVP; patient-booking-first delivery selected. Foundation, clinic login, scheduling and the shared booking service are implemented. Patient sign-in/listing #10 is merged; hosted patient booking #11 is merged into `main`.**
 
 ## Scope and stack
 
