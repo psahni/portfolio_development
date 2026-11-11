@@ -166,8 +166,11 @@ test("calendar requires admin access and clinic configuration", async ({ page })
 test("time-grid events open an accessible details panel with keyboard focus restoration", async ({ page }, testInfo) => {
   const date = await prepare(page); await seedBooked(date); await showDate(page, date);
   await page.getByRole("button", { name: "Day", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Day calendar", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Day", exact: true })).toBeEnabled();
   const booked = page.getByRole("button", { name: "Booked: 9:20 AM – 9:40 AM", exact: true });
-  await booked.focus(); await page.keyboard.press("Enter");
+  await expect(booked).toBeEnabled();
+  await booked.press("Enter");
   const panel = page.getByRole("dialog");
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("heading", { name: "Booked appointment", exact: true })).toBeVisible();
