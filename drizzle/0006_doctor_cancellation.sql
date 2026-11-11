@@ -1,0 +1,7 @@
+ALTER TABLE "appointments" ADD COLUMN "cancelled_by_staff_id" text;--> statement-breakpoint
+ALTER TABLE "appointments" ADD COLUMN "cancelled_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "appointments" ADD COLUMN "cancellation_reason" text;--> statement-breakpoint
+ALTER TABLE "appointments" ADD COLUMN "rebooking_instruction" text;--> statement-breakpoint
+ALTER TABLE "appointments" ADD COLUMN "original_time_blocked" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "appointments" ADD CONSTRAINT "appointments_cancelled_by_staff_id_user_id_fk" FOREIGN KEY ("cancelled_by_staff_id") REFERENCES "staff_auth"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "appointments" ADD CONSTRAINT "appointment_doctor_cancellation" CHECK (("appointments"."cancelled_by_staff_id" is null and "appointments"."cancelled_at" is null and "appointments"."cancellation_reason" is null and "appointments"."rebooking_instruction" is null and "appointments"."original_time_blocked" = false) or ("appointments"."cancelled_by_staff_id" is not null and "appointments"."status" = 'cancelled' and "appointments"."cancelled_at" is not null and "appointments"."cancellation_reason" is not null and char_length("appointments"."cancellation_reason") between 1 and 160 and "appointments"."rebooking_instruction" is not null and char_length("appointments"."rebooking_instruction") <= 300));

@@ -8,6 +8,8 @@
 
 **Doctor calendar:** Admin → **Calendar**. Switch Day/Week, choose dates, navigate and refresh. Available slots are green, booked times red and breaks amber; each also has a text label. Add a break in Availability and refresh Calendar to check it. Booked cards use appointment reservations, including confirmed patient bookings. Viewing creates no reservation.
 
+**Doctor appointments (#9, first slice):** With synthetic bookings and migration `0006` applied, Admin → **Appointments** → select the clinic date. Check contacts, confirmed/completed/no-show/cancelled labels and empty dates. Open cancellation: Keep/Escape/Close must leave the visit unchanged. Confirm with a nonclinical reason and optional rebooking instruction; checking the block option preserves the entire original buffered interval as a break. Refresh to see cancelled history and verify My appointments/Calendar reflect the change. Uncertain failures freeze details for an identical retry; Close and refresh checks current state. Staff/patients must not access this page/API. No automatic notification is sent.
+
 ## 1. Local setup
 
 Keep your existing dev server running. Start local PostgreSQL if needed, then use your ignored `.env.local` settings:
