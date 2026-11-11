@@ -87,7 +87,7 @@ export function createBookingService(db: ApplicationDatabase, access: BookingAcc
           const cancellations = await tx.select({ at: bookingAudit.createdAt }).from(bookingAudit)
             .innerJoin(appointments, eq(appointments.id, bookingAudit.appointmentId))
             .where(and(eq(appointments.doctorId, 1), eq(appointments.patientUserId, actor.userId),
-              eq(appointments.status, "cancelled"), gte(appointments.startsAt, bounds.start), lt(appointments.startsAt, bounds.end),
+              eq(appointments.status, "cancelled"),
               eq(bookingAudit.action, "cancelled"), eq(bookingAudit.actorKind, "patient"), eq(bookingAudit.actorId, actor.userId)))
             .orderBy(asc(bookingAudit.createdAt), asc(bookingAudit.id));
           let cancellationsInCycle = 0, waitUntil = 0;
@@ -98,7 +98,7 @@ export function createBookingService(db: ApplicationDatabase, access: BookingAcc
             cancellationsInCycle++;
             if (cancellationsInCycle === 2) { waitUntil = at + CANCELLATION_COOLDOWN_MS; cancellationsInCycle = 0; }
           }
-          if (now.getTime() < waitUntil) throw new BookingError(409, "PATIENT_CANCELLATION_COOLDOWN", "After two cancellations for this clinic date, wait 3 hours from the latest cancellation before booking again, or call the clinic for help.");
+          if (now.getTime() < waitUntil) throw new BookingError(409, "PATIENT_CANCELLATION_COOLDOWN", "After two cancellations, wait 3 hours from the latest cancellation before booking again, or call the clinic for help.");
 
         }
 

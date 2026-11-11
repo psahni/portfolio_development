@@ -160,7 +160,7 @@ test("late cancellation releases the slot and shows its classification in patien
 });
 
 
-test("two cancellations require a three-hour wait before another booking for that date", async ({ page }) => {
+test("two cancellations require a three-hour wait before another booking", async ({ page }) => {
   await setup(page);
   for (let i = 0; i < 2; i++) {
     const booked = await book(page);

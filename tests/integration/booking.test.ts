@@ -169,16 +169,25 @@ describe("patient cancellation cooldown", () => {
     expect(await service.bookPatient(credentials.patient, firstInput)).toEqual(first);
     await service.bookPatient(credentials.other, input(`${date}T09:20:00Z`));
     await service.bookForClinic(credentials.staff, clinicInput(`${date}T09:40:00Z`));
-    await service.bookPatient(credentials.patient, input("2026-11-11T09:00:00Z"));
+    await expect(service.bookPatient(credentials.patient, input("2026-11-11T09:00:00Z"))).rejects.toMatchObject({ code: "PATIENT_CANCELLATION_COOLDOWN" });
     now = new Date(secondCancelledAt + 3 * 60 * 60 * 1000 - 1);
     await expect(service.bookPatient(credentials.patient, input())).rejects.toMatchObject({ code: "PATIENT_CANCELLATION_COOLDOWN" });
     now = new Date(secondCancelledAt + 3 * 60 * 60 * 1000);
+    await service.bookPatient(credentials.patient, input("2026-11-11T09:00:00Z"));
     const third = await service.bookPatient(credentials.patient, input());
     await cancellationService().cancel(credentials.patient, { appointmentId: third.id });
     const fourth = await service.bookPatient(credentials.patient, input());
     await cancellationService().cancel(credentials.patient, { appointmentId: fourth.id });
     await expect(service.bookPatient(credentials.patient, input())).rejects.toMatchObject({ code: "PATIENT_CANCELLATION_COOLDOWN" });
     expect(await counts()).toEqual([7, 3, 11, 7]);
+  });
+  it("counts cancellations on different dates toward the same patient cooldown", async () => {
+    const first = await service.bookPatient(credentials.patient, input());
+    await cancellationService().cancel(credentials.patient, { appointmentId: first.id });
+    const second = await service.bookPatient(credentials.patient, input("2026-11-11T09:00:00Z"));
+    await cancellationService().cancel(credentials.patient, { appointmentId: second.id });
+    await expect(service.bookPatient(credentials.patient, input("2026-11-12T09:00:00Z"))).rejects.toMatchObject({ code: "PATIENT_CANCELLATION_COOLDOWN" });
+    expect(await counts()).toEqual([2, 0, 4, 2]);
   });
   it("extends the wait for older cancellation history that violated the new rule", async () => {
     const start = now.getTime(), ids: string[] = [];
