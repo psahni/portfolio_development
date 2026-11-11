@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type Props = { id: string; name: string; date: string; time: string; timezone: string };
+const subscribeToHydration = () => () => {};
 
 function containFocus(event: KeyboardEvent<HTMLDialogElement>) {
   if (event.key !== "Tab") return;
@@ -17,6 +18,9 @@ function containFocus(event: KeyboardEvent<HTMLDialogElement>) {
 }
 
 export function DoctorCancellation({ id, name, date, time, timezone }: Props) {
+  // The date filter performs a document navigation. Keep its server-rendered
+  // cancellation control disabled until the dialog's client handlers are ready.
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const router = useRouter(), panel = useRef<HTMLDialogElement>(null), title = useRef<HTMLHeadingElement>(null), trigger = useRef<HTMLButtonElement>(null);
   const inFlight = useRef(false), payload = useRef<string | null>(null);
   const [open, setOpen] = useState(false), [pending, setPending] = useState(false), [done, setDone] = useState(false);
@@ -59,7 +63,7 @@ export function DoctorCancellation({ id, name, date, time, timezone }: Props) {
   }
   const frozen = pending || uncertain;
   return <>
-    {done ? <p role="status" className="text-sm text-primary">Appointment cancelled</p> : <Button ref={trigger} type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>Cancel appointment</Button>}
+    {done ? <p role="status" className="text-sm text-primary">Appointment cancelled</p> : <Button ref={trigger} type="button" variant="outline" size="sm" disabled={!hydrated} onClick={() => setOpen(true)}>Cancel appointment</Button>}
     <dialog ref={panel} aria-labelledby={`doctor-cancel-${id}`} aria-describedby={`doctor-cancel-help-${id}`} onKeyDown={containFocus} onCancel={(event) => { event.preventDefault(); close(); }}
       className="booking-review fixed inset-0 m-auto max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-xl border bg-card p-5 text-foreground shadow-xl sm:p-6">
       <div className="flex items-start justify-between gap-4"><h2 ref={title} tabIndex={-1} id={`doctor-cancel-${id}`} className="text-xl font-semibold tracking-tight">Cancel this appointment?</h2><Button type="button" variant="outline" size="sm" aria-label="Close cancellation" disabled={pending} onClick={close}><X aria-hidden="true" /></Button></div>

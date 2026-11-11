@@ -10,6 +10,7 @@ async function withDatabase<T>(work: (client: Client) => Promise<T>) {
   try { await client.connect(); return await work(client); } finally { await client.end(); }
 }
 const day = () => new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+test.beforeEach(async ({ page }) => { page.on("pageerror", (error) => console.error("Doctor appointments client error:", error.message)); });
 async function signIn(page: Page, staff = false) {
   await page.goto("/admin"); await page.getByLabel("Email", { exact: true }).fill(staff ? "staff@example.test" : "doctor@example.test");
   if (staff) { await page.getByRole("button", { name: "Send code", exact: true }).click(); await page.getByLabel("Code", { exact: true }).fill("0000"); }
@@ -34,7 +35,13 @@ async function setup(page: Page) {
 const modal = (page: Page) => page.getByRole("dialog", { name: "Cancel this appointment?", exact: true });
 async function open(page: Page) {
   await page.getByRole("button", { name: "Cancel appointment", exact: true }).click();
-  await expect(modal(page).getByRole("heading")).toBeFocused();
+  try { await expect(modal(page).getByRole("heading")).toBeFocused(); }
+  catch (error) {
+    console.error("Doctor dialog state:", await page.locator("dialog").evaluateAll((dialogs) => dialogs.map((dialog) => ({
+      open: (dialog as HTMLDialogElement).open, label: dialog.getAttribute("aria-labelledby"), heading: dialog.querySelector("h2")?.textContent,
+    }))));
+    throw error;
+  }
 }
 async function state(id: string) {
   return withDatabase(async (db) => ({
