@@ -1,4 +1,5 @@
 import "server-only";
+import { whatsappBookingEvents } from "@/modules/notifications/booking-events";
 import { getDatabase } from "@/db/server";
 import { getIdentity } from "@/modules/identity/server";
 import { createPatientBookingAccess } from "./access";
@@ -9,5 +10,5 @@ export function getBookingService() {
   const identity = getIdentity();
   return createBookingService(getDatabase().db, {
     ...identity.access, requirePatientAccess: createPatientBookingAccess(identity.patient),
-  }, createContactProtection(process.env.BOOKING_DATA_KEY));
+  }, createContactProtection(process.env.BOOKING_DATA_KEY), undefined, whatsappBookingEvents);
 }

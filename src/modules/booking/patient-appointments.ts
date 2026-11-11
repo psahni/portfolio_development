@@ -2,6 +2,7 @@ import "server-only";
 import { asc, eq } from "drizzle-orm";
 import { isAPIError } from "better-auth/api";
 import type { ApplicationDatabase } from "@/db/connection";
+import { whatsappConsents } from "@/db/schema/notifications";
 import { appointments } from "@/db/schema/booking";
 import type { PatientPrincipal } from "@/modules/identity/patient-access";
 
@@ -9,6 +10,7 @@ type PatientAccess = { requirePatientAccess(headers: Headers): Promise<PatientPr
 export type PatientAppointment = {
   id: string; startsAt: string; endsAt: string; timezone: string;
   patientCancellationLate: boolean | null;
+  whatsappConsentActive: boolean;
   status: "confirmed" | "cancelled" | "completed" | "no_show";
 };
 
@@ -17,9 +19,10 @@ export function createPatientAppointmentsService(db: ApplicationDatabase, access
     const patient = await access.requirePatientAccess(headers);
     // Ownership comes only from the patient session. Contact matches never grant access.
     const rows = await db.select({ id: appointments.id, startsAt: appointments.startsAt, endsAt: appointments.endsAt,
-      timezone: appointments.timezone, status: appointments.status, patientCancellationLate: appointments.patientCancellationLate }).from(appointments)
+      timezone: appointments.timezone, status: appointments.status, patientCancellationLate: appointments.patientCancellationLate, consented: whatsappConsents.consented, withdrawn: whatsappConsents.withdrawn }).from(appointments)
+      .leftJoin(whatsappConsents, eq(whatsappConsents.appointmentId, appointments.id))
       .where(eq(appointments.patientUserId, patient.userId)).orderBy(asc(appointments.startsAt), asc(appointments.id));
-    return rows.map((row) => ({ ...row, startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString() }));
+    return rows.map(({ consented, withdrawn, ...row }) => ({ ...row, whatsappConsentActive: consented === true && withdrawn === false, startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString() }));
   }
   async function view(headers: Headers) {
     const appointments = await list(headers), now = clock().getTime();

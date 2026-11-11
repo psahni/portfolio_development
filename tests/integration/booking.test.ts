@@ -1,3 +1,8 @@
+import { whatsappAttempts, whatsappConsents, whatsappNotifications } from "@/db/schema/notifications";
+import { whatsappBookingEvents } from "@/modules/notifications/booking-events";
+import { createWhatsAppWorker } from "@/modules/notifications/worker";
+import { createWhatsAppConsentHandler } from "@/modules/notifications/consent";
+import { vi } from "vitest";
 import { randomBytes, randomUUID } from "node:crypto";
 import { Client } from "pg";
 import { and, eq, sql } from "drizzle-orm";
@@ -979,5 +984,142 @@ describe("patient appointment cancellation", () => {
     } finally { await database.db.execute(sql`DROP TRIGGER reject_patient_cancellation ON booking_audit`); await database.db.execute(sql`DROP FUNCTION reject_patient_cancellation()`); }
     expect((await cancellationHandler()(httpRequest("appointments/cancel", "patient", { appointmentId: booked.id }))).status).toBe(200);
     expect(await counts()).toEqual([1, 0, 2, 1]);
+  });
+});
+
+
+describe("WhatsApp Phase 1", () => {
+  const enabledService = () => createBookingService(database.db, { ...identity.access, requirePatientAccess: createPatientBookingAccess(identity.patient) }, protection, clock, whatsappBookingEvents);
+  const withdrawalHandler = () => createWhatsAppConsentHandler(database.db, identity.patientAccess, () => baseURL);
+  const jobs = () => database.db.select().from(whatsappNotifications);
+  const attempts = () => database.db.select().from(whatsappAttempts);
+  it("stores both consent choices, queues only opt-in and preserves consent on receipt replay", async () => {
+    const booking = enabledService(), value = { ...input(), whatsappConsent: true };
+    const results = await Promise.all([booking.bookPatient(credentials.patient, value), booking.bookPatient(credentials.patient, value)]);
+    expect(results[0]).toEqual(results[1]);
+    await expect(booking.bookPatient(credentials.patient, { ...value, whatsappConsent: false })).rejects.toMatchObject({ code: "REQUEST_KEY_CONFLICT" });
+    await booking.bookPatient(credentials.other, input(`${date}T09:20:00Z`));
+    expect(await database.db.select().from(whatsappConsents)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ appointmentId: results[0].id, consented: true, recordedAt: now, withdrawn: false, withdrawnAt: null }),
+      expect.objectContaining({ consented: false, recordedAt: now, withdrawn: false }),
+    ]));
+    expect(await jobs()).toHaveLength(1);
+    await expect(database.db.insert(whatsappNotifications).values({ appointmentId: results[0].id })).rejects.toThrow();
+    expect(await attempts()).toHaveLength(0);
+  });
+  it.each([false, true])("rolls back jobs, consent and booking on failure (deferred=%s)", async (deferred) => {
+    await database.db.execute(sql`CREATE FUNCTION reject_whatsapp_job() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic'; END $$`);
+    await database.db.execute(sql.raw(deferred
+      ? "CREATE CONSTRAINT TRIGGER reject_whatsapp_job AFTER INSERT ON whatsapp_notifications DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_whatsapp_job()"
+      : "CREATE TRIGGER reject_whatsapp_job BEFORE INSERT ON whatsapp_notifications FOR EACH ROW EXECUTE FUNCTION reject_whatsapp_job()"));
+    const value = { ...input(), whatsappConsent: true };
+    try {
+      await expect(enabledService().bookPatient(credentials.patient, value)).rejects.toThrow();
+      expect(await counts()).toEqual([0, 0, 0, 0]);
+      expect(await jobs()).toHaveLength(0); expect(await database.db.select().from(whatsappConsents)).toHaveLength(0);
+    } finally {
+      await database.db.execute(sql`DROP TRIGGER reject_whatsapp_job ON whatsapp_notifications`);
+      await database.db.execute(sql`DROP FUNCTION reject_whatsapp_job()`);
+    }
+    await enabledService().bookPatient(credentials.patient, value);
+    expect(await jobs()).toHaveLength(1);
+  });
+  it("rejects stale bookings without jobs and checks consent types", async () => {
+    await expect(enabledService().bookPatient(credentials.patient, { ...input("2026-11-10T22:00:00Z"), whatsappConsent: true })).rejects.toMatchObject({ code: "SLOT_UNAVAILABLE" });
+    await expect(enabledService().bookPatient(credentials.patient, { ...input(), whatsappConsent: "true" })).rejects.toThrow();
+    expect(await jobs()).toHaveLength(0);
+  });
+  it("sends only committed work once across workers and records API acceptance", async () => {
+    const receipt = await enabledService().bookPatient(credentials.patient, { ...input(), whatsappConsent: true });
+    const send = vi.fn(async () => {
+      // A separate pool connection sees the appointment only after COMMIT.
+      expect(await database.db.select().from(appointments).where(eq(appointments.id, receipt.id))).toHaveLength(1);
+      return { status: "accepted" as const, apiMessageId: "wamid.synthetic" };
+    });
+    await Promise.all([createWhatsAppWorker(database.db, { send }, clock).runOnce(), createWhatsAppWorker(database.db, { send }, clock).runOnce()]);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((await jobs())[0]).toMatchObject({ status: "accepted", attempts: 1, apiMessageId: "wamid.synthetic", errorCode: null });
+    expect((await attempts())[0]).toMatchObject({ status: "accepted", number: 1, apiMessageId: "wamid.synthetic", finishedAt: now });
+    expect(await createWhatsAppWorker(database.db, { send }, clock).runOnce()).toBe(false);
+  });
+  it("withdraws only owned consent, preserves timestamps on retry and suppresses queued work", async () => {
+    const booking = enabledService(), value = { ...input(), whatsappConsent: true };
+    const receipt = await booking.bookPatient(credentials.patient, value);
+    const body = { appointmentId: receipt.id };
+    for (const role of ["anonymous", "admin", "other"]) expect((await withdrawalHandler()(httpRequest("whatsapp/withdraw", role, body))).status).toBe(role === "other" ? 404 : 401);
+    expect((await withdrawalHandler()(httpRequest("whatsapp/withdraw", "patient", body, "https://forged.test"))).status).toBe(403);
+    expect((await withdrawalHandler()(httpRequest("whatsapp/withdraw", "patient", { ...body, patientUserId: otherPatientId }))).status).toBe(400);
+    expect((await withdrawalHandler()(httpRequest("whatsapp/withdraw", "patient", { appointmentId: randomUUID() }))).status).toBe(404);
+    const response = await withdrawalHandler()(httpRequest("whatsapp/withdraw", "patient", body));
+    expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toContain("no-store");
+    const [consent] = await database.db.select().from(whatsappConsents);
+    expect(consent.withdrawn).toBe(true); expect(consent.withdrawnAt).toBeInstanceOf(Date);
+    await withdrawalHandler()(httpRequest("whatsapp/withdraw", "patient", body));
+    expect((await database.db.select().from(whatsappConsents))[0]).toEqual(consent);
+    await booking.bookPatient(credentials.patient, value);
+    expect((await database.db.select().from(whatsappConsents))[0]).toEqual(consent);
+    expect((await createPatientAppointmentsService(database.db, identity.patientAccess).list(credentials.patient))[0].whatsappConsentActive).toBe(false);
+    const send = vi.fn(); await createWhatsAppWorker(database.db, { send }, clock).runOnce();
+    expect(send).not.toHaveBeenCalled(); expect((await jobs())[0].status).toBe("suppressed");
+  });
+  it.each(["cancelled", "past", "withdrawn"])("suppresses %s notifications at dispatch", async (reason) => {
+    const receipt = await enabledService().bookPatient(credentials.patient, { ...input(), whatsappConsent: true });
+    if (reason === "cancelled") await cancellationService().cancel(credentials.patient, { appointmentId: receipt.id });
+    if (reason === "past") now = new Date(receipt.startsAt);
+    if (reason === "withdrawn") await database.db.update(whatsappConsents).set({ withdrawn: true, withdrawnAt: now });
+    const send = vi.fn(); await createWhatsAppWorker(database.db, { send }, clock).runOnce();
+    expect(send).not.toHaveBeenCalled(); expect((await jobs())[0]).toMatchObject({ status: "suppressed", attempts: 0 });
+  });
+  it("bounds definite rate-limit retries and logs each attempt", async () => {
+    await enabledService().bookPatient(credentials.patient, { ...input(), whatsappConsent: true });
+    const send = vi.fn(async () => ({ status: "failed" as const, errorCode: "META_130429", retryable: true }));
+    const worker = createWhatsAppWorker(database.db, { send }, clock);
+    for (let i = 1; i <= 3; i++) {
+      await worker.runOnce();
+      expect((await jobs())[0]).toMatchObject({ attempts: i, status: i < 3 ? "pending" : "failed" });
+      expect(await worker.runOnce()).toBe(false);
+      now = new Date(now.getTime() + i * 60_000);
+    }
+    expect(send).toHaveBeenCalledTimes(3); expect(await attempts()).toHaveLength(3);
+  });
+  it("records uncertain outcomes and never retries them automatically", async () => {
+    await enabledService().bookPatient(credentials.patient, { ...input(), whatsappConsent: true });
+    const send = vi.fn(async () => { throw new Error("private access token"); });
+    const worker = createWhatsAppWorker(database.db, { send }, clock);
+    await worker.runOnce(); expect(await worker.runOnce()).toBe(false);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((await jobs())[0]).toMatchObject({ status: "uncertain", errorCode: "SENDER_INTERRUPTED" });
+    expect(JSON.stringify(await attempts())).not.toContain("private access token");
+  });
+  it("reconciles a late accepted result from the same interrupted attempt without resending", async () => {
+    await enabledService().bookPatient(credentials.patient, { ...input(), whatsappConsent: true });
+    const send = vi.fn(async () => {
+      now = new Date(now.getTime() + 61_000);
+      const otherSend = vi.fn();
+      expect(await createWhatsAppWorker(database.db, { send: otherSend }, clock).runOnce()).toBe(false);
+      expect(otherSend).not.toHaveBeenCalled();
+      expect((await jobs())[0].status).toBe("uncertain");
+      return { status: "accepted" as const, apiMessageId: "wamid.late" };
+    });
+    await createWhatsAppWorker(database.db, { send }, clock).runOnce();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((await jobs())[0]).toMatchObject({ status: "accepted", attempts: 1, apiMessageId: "wamid.late" });
+    expect((await attempts())[0]).toMatchObject({ status: "accepted", apiMessageId: "wamid.late" });
+  });
+  it("preserves pre-integration receipt replay without adding consent or notifications", async () => {
+    const value = input(), original = await service.bookPatient(credentials.patient, value);
+    expect(await enabledService().bookPatient(credentials.patient, { ...value, whatsappConsent: false })).toEqual(original);
+    expect(await jobs()).toHaveLength(0);
+    expect(await database.db.select().from(whatsappConsents)).toHaveLength(0);
+  });
+  it("marks interrupted sends uncertain after restart without resending", async () => {
+    await enabledService().bookPatient(credentials.patient, { ...input(), whatsappConsent: true });
+    const [job] = await jobs();
+    await database.db.update(whatsappNotifications).set({ status: "sending", attempts: 1, updatedAt: new Date(now.getTime() - 60_001) });
+    await database.db.insert(whatsappAttempts).values({ notificationId: job.id, number: 1, status: "sending", startedAt: new Date(now.getTime() - 60_001) });
+    const send = vi.fn(); await createWhatsAppWorker(database.db, { send }, clock).runOnce();
+    expect(send).not.toHaveBeenCalled();
+    expect((await jobs())[0]).toMatchObject({ status: "uncertain", errorCode: "WORKER_INTERRUPTED" });
+    expect((await attempts())[0]).toMatchObject({ status: "uncertain", errorCode: "WORKER_INTERRUPTED" });
   });
 });

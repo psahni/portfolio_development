@@ -80,7 +80,7 @@ describe("patient appointment ownership", () => {
     await appointment(otherId, "2026-11-10T09:20Z"); await appointment(null, "2026-11-10T09:40Z");
     const response = await createPatientAppointmentsHandler(() => service)(new Request(`${baseURL}/api/patient/appointments?userId=${otherId}`, { headers: headers.patient }));
     expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(await response.json()).toEqual({ appointments: [{ id: own.id, startsAt: "2026-11-10T09:00:00.000Z", endsAt: "2026-11-10T09:20:00.000Z", timezone: "Asia/Kolkata", status: "confirmed", patientCancellationLate: null }] });
+    expect(await response.json()).toEqual({ appointments: [{ id: own.id, startsAt: "2026-11-10T09:00:00.000Z", endsAt: "2026-11-10T09:20:00.000Z", timezone: "Asia/Kolkata", status: "confirmed", patientCancellationLate: null, whatsappConsentActive: false }] });
     expect((await service.list(headers.other)).map((row) => row.id)).not.toContain(own.id);
   });
   it("shows an empty list without claiming unlinked bookings or creating records", async () => {
