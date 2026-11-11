@@ -13,13 +13,13 @@ Use **PostgreSQL**, **Drizzle ORM** and **Drizzle Kit** for one clinic, one bran
 | `staff_access` | Auth user, role (`admin` or `staff`), active status, protected admin PIN hash, failed attempts and lock expiry. One admin only. |
 | `doctor_profile` | One doctor's name, appointment duration, buffers and booking limits. |
 | `weekly_hours`, `day_overrides` | Normal weekly hours; a clinic-local date's holiday or replacement special hours. |
-| `appointments` | Explicit patient link or staff creator, encrypted contact details, UTC times and booked timezone/duration/buffer snapshots. Cancellation details follow later. |
-| `booking_audit`, `booking_requests` | Creation audit and actor-scoped confirmation receipts for safe retries within 24 hours; expired keys cannot be reused. |
+| `appointments` | Explicit patient link or staff creator, encrypted contact details, UTC times and booked timezone/duration/buffer snapshots. Patient cancellation retains the row and clears its reservation; doctor cancellation details follow later. |
+| `booking_audit`, `booking_requests` | Creation/cancellation audit and actor-scoped confirmation receipts for safe retries within 24 hours; expired keys cannot be reused. |
 | `reservations` | UTC occupancy with PostgreSQL non-overlap protection. Manual breaks and confirmed appointment occupancy, including buffers. |
 | Calendar connection/projection tables | Encrypted credentials, event IDs and sync status. |
 | `outbox_jobs`, `notifications` | Saved integration work, notice status, retries and provider message IDs. |
 
-Migration `0004_shared_booking.sql` adds booking records and preserves the existing occupancy exclusion constraint. Contacts use AES-256-GCM with a dedicated `BOOKING_DATA_KEY`; retain the key securely for restoration. Admin PINs remain salted, protected hashes; repeated bootstrap preserves the current PIN.
+Migration `0004_shared_booking.sql` adds booking records and preserves the existing occupancy exclusion constraint. `0005_patient_cancellation.sql` permits cancellation audit events without changing existing data or occupancy constraints. Contacts use AES-256-GCM with a dedicated `BOOKING_DATA_KEY`; retain the key securely for restoration. Admin PINs remain salted, protected hashes; repeated bootstrap preserves the current PIN.
 
 ## Important rules
 

@@ -39,6 +39,7 @@ Unknown/admin emails receive the same code-request feedback as staff but cannot 
 
 - With `AUTH_TEST_MODE=true`, open `/login`, enter a new synthetic email such as `patient@example.test`, request a code and enter `0000`. No account setup or separate signup is needed; entering an email alone creates no account.
 - Expect **My appointments** and **No appointments yet** for this new account. Choose **Book an appointment**, load an available date, select a time and enter a synthetic name/phone. Review, then **Confirm booking**; expect confirmation and the visit in My appointments. Leaving before confirmation creates no booking.
+- In My appointments, choose **Cancel appointment** for a future confirmed visit. Keep appointment/Escape closes without saving; confirming moves it to history as Cancelled and frees its buffered time. Started/past visits cannot be cancelled. No cancellation email is sent in this slice.
 - Sign out and revisit `/appointments`: it should return to `/login`. Patient sign-in must not open the clinic workspace, and clinic sign-in alone must not open patient appointments.
 - Try an incorrect/expired code, request a new code, and change the email. Errors should be clear; repeated attempts remain limited. With test mode off, code requests report unavailable until email delivery is connected.
 

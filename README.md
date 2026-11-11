@@ -2,7 +2,7 @@
 
 Native booking for one clinic, one branch and one doctor. The selected patient-booking-first approach is delivered through small, reviewed tasks.
 
-**Current delivery:** `/admin` supports clinic sign-in; `/login` supports patient email codes and `/appointments` shows only that patient's linked bookings. `/book` supports patient slot selection, details, review and committed confirmation. Real email delivery is still pending.
+**Current delivery:** `/admin` supports clinic sign-in; `/login` supports patient email codes and `/appointments` shows only that patient's linked bookings. `/book` supports patient slot selection, details, review and committed confirmation. My appointments lets patients cancel their own confirmed visits before the start time; cancelled visits stay in history. Real email delivery is still pending.
 
 **Testing now:** Follow the [testing steps](docs/TESTING.md). With localhost `AUTH_TEST_MODE=true`, open `/login`, enter a synthetic email such as `patient@example.test`, request a code and enter `0000`. New patients are created automatically after the code is checked; no signup form or seed command is needed.
 

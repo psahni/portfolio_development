@@ -1,6 +1,6 @@
 # Nuvortiq Smart Booking — MVP Architecture
 
-**Status: native MVP; patient-booking-first delivery selected. Foundation, clinic login, scheduling and the shared booking service are implemented. Patient sign-in/listing #10 is merged; hosted patient booking #11 is implemented for review.**
+**Status: native MVP; patient-booking-first delivery selected. Foundation, clinic login, scheduling and the shared booking service are implemented. Patient sign-in/listing #10 is merged; hosted patient booking #11 is merged into `main`.**
 
 ## Scope and stack
 
@@ -14,7 +14,7 @@ Multiple clinics/branches/doctors, tenant infrastructure, payments and clinical 
 
 | User | Login | Access |
 | --- | --- | --- |
-| Patient | Email + one-time code at `/login` | Book appointments and view only their own linked bookings. |
+| Patient | Email + one-time code at `/login` | Book appointments, view linked history and cancel their own future confirmed visits. |
 | Doctor/admin | Bootstrap email + four-digit PIN at `/admin` | Manage appointments, availability, staff, settings and integrations. |
 | Staff | Email + one-time code at `/admin` | Manage appointments within permissions assigned by the doctor. |
 
@@ -41,6 +41,8 @@ M1 isolates patient and staff identities in separate PostgreSQL auth schemas, en
 - Save appointment, reservation, audit, duplicate-request result and any integration jobs together. Confirm only after the transaction commits.
 - Duplicate retries safely return the existing result. Rescheduling is atomic; failure preserves the original booking.
 - Store appointment instants in UTC, display the clinic's timezone and retain booked duration/buffer snapshots. Schedule edits must not silently invalidate existing bookings.
+
+Patients can cancel their own confirmed appointments before the start time from My appointments. Cancellation releases buffered occupancy and writes one audit event atomically under the doctor lock; repeated requests do not change other bookings. Retain cancelled history. No cancellation emails are sent until integrations are implemented.
 
 The doctor can cancel a confirmed appointment, record a short nonclinical reason and suggest another time or ask the patient to rebook. If the doctor is unavailable, block the original time in the cancellation transaction. An automatic email includes the cancelled time, optional suggestion and rebooking link. Suggestions do not reserve slots; recheck availability when the patient books again.
 
