@@ -250,3 +250,22 @@ test("admin can copy the configured hosted link and website button", async ({ pa
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("mobile-booking-link.png"), fullPage: true });
 });
+
+
+test("a patient cannot confirm a second appointment on the same clinic date", async ({ page }) => {
+  await seedClinic(); await signIn(page); await showTimes(page); await review(page);
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Appointment confirmed", exact: true })).toBeVisible();
+  await page.goto("/book");
+  await page.getByLabel("Appointment date", { exact: true }).fill(day());
+  await page.getByRole("button", { name: "Show times", exact: true }).click();
+  await page.getByRole("button", { name: "9:20 AM – 9:40 AM", exact: true }).click();
+  await page.getByLabel("Full name", { exact: true }).fill("Synthetic Visitor");
+  await page.getByLabel("Phone number", { exact: true }).fill("+919876543210");
+  await page.getByRole("button", { name: "Review booking", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).not.toBeVisible();
+  await expect(page.locator("main").getByRole("alert")).toContainText("You already have an appointment on this clinic date");
+  await expect(page.locator("main").getByRole("alert")).toBeFocused();
+  expect(await counts()).toEqual({ appointments: 1, reservations: 1, audit: 1, receipts: 1 });
+});

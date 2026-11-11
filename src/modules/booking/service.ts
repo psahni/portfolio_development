@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, eq, gt, lt, sql } from "drizzle-orm";
+import { and, eq, gt, gte, lt, ne, sql } from "drizzle-orm";
 import type { ApplicationDatabase } from "@/db/connection";
 import { patientSession, patientUser, staffAccess, staffSession } from "@/db/schema/auth";
 import { appointments, bookingAudit, bookingRequests } from "@/db/schema/booking";
@@ -74,6 +74,15 @@ export function createBookingService(db: ApplicationDatabase, access: BookingAcc
         const occupied = await tx.select().from(reservations).where(and(eq(reservations.doctorId, 1), lt(reservations.startsAt, bounds.end), gt(reservations.endsAt, bounds.start)));
         const slot = generateSlots(config, date, override ?? null, occupied, now).find((candidate) => candidate.startsAt === input.startsAt);
         if (!slot) throw new BookingError(409, "SLOT_UNAVAILABLE", "That slot is no longer available. Refresh the available times and choose another slot.");
+
+        // The shared doctor lock serializes this check with bookings/cancellations.
+        // Replay receipts above first; a retry is not a second appointment.
+        if (actor.kind === "patient") {
+          const [existing] = await tx.select({ id: appointments.id }).from(appointments).where(and(
+            eq(appointments.doctorId, 1), eq(appointments.patientUserId, actor.userId), ne(appointments.status, "cancelled"),
+            gte(appointments.startsAt, bounds.start), lt(appointments.startsAt, bounds.end))).limit(1);
+          if (existing) throw new BookingError(409, "PATIENT_DAILY_LIMIT", "You already have an appointment on this clinic date. To choose another time, cancel your existing appointment first, then book again.");
+        }
 
         const id = randomUUID();
         const receipt: BookingReceipt = { id, status: "confirmed", startsAt: slot.startsAt, endsAt: slot.endsAt, timezone: config.timezone,

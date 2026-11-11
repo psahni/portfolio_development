@@ -106,6 +106,53 @@ beforeEach(async () => {
 });
 afterAll(async () => { await database?.pool.end(); });
 
+describe("patient daily booking limit", () => {
+  it.each(["confirmed", "completed", "no_show"] as const)("counts %s visits without creating a partial second booking", async (status) => {
+    const original = input(), first = await service.bookPatient(credentials.patient, original);
+    await database.db.update(appointments).set({ status }).where(eq(appointments.id, first.id));
+    await expect(service.bookPatient(credentials.patient, input(`${date}T09:20:00Z`))).rejects.toMatchObject({ statusCode: 409, code: "PATIENT_DAILY_LIMIT" });
+    expect(await service.bookPatient(credentials.patient, original)).toEqual(first);
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+  it("serializes different-slot requests from the same patient", async () => {
+    const results = await Promise.allSettled([service.bookPatient(credentials.patient, input()), service.bookPatient(credentials.patient, input(`${date}T09:20:00Z`))]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((r) => r.status === "rejected")).toMatchObject({ reason: { code: "PATIENT_DAILY_LIMIT" } });
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+  it("allows cancel then book again, other patients, other dates and repeated staff bookings", async () => {
+    const original = input(), first = await service.bookPatient(credentials.patient, original);
+    await cancellationService().cancel(credentials.patient, { appointmentId: first.id });
+    const next = await service.bookPatient(credentials.patient, input());
+    expect(next.id).not.toBe(first.id);
+    expect(await service.bookPatient(credentials.patient, original)).toEqual(first);
+    await service.bookPatient(credentials.other, input(`${date}T09:20:00Z`));
+    await service.bookPatient(credentials.patient, input("2026-11-11T09:00:00Z"));
+    await service.bookForClinic(credentials.staff, clinicInput(`${date}T09:40:00Z`));
+    await service.bookForClinic(credentials.staff, clinicInput(`${date}T10:00:00Z`));
+    expect(await counts()).toEqual([6, 5, 7, 6]);
+  });
+  it("uses clinic dates across UTC midnight, allowing the next local date", async () => {
+    const config = { ...configuration(), timezone: "Asia/Kolkata" };
+    config.weeklyHours.forEach((d) => { d.intervals = [{ start: "00:00", end: "02:00" }, { start: "23:00", end: "23:59" }]; });
+    await clinic.save(credentials.admin, config);
+    await service.bookPatient(credentials.patient, input("2026-11-09T18:30:00Z"));
+    await expect(service.bookPatient(credentials.patient, input("2026-11-10T17:30:00Z"))).rejects.toMatchObject({ code: "PATIENT_DAILY_LIMIT" });
+    await service.bookPatient(credentials.patient, input("2026-11-10T18:30:00Z"));
+    expect(await counts()).toEqual([2, 2, 2, 2]);
+  });
+  it.each(["2026-03-08", "2026-11-01"])("uses the full DST local date %s", async (day) => {
+    now = new Date(new Date(`${day}T00:00Z`).getTime() - 86_400_000);
+    const config = { ...configuration(), timezone: "America/New_York" };
+    config.weeklyHours.forEach((d) => { d.intervals = [{ start: "00:00", end: "04:00" }]; });
+    await clinic.save(credentials.admin, config);
+    const slots = (await schedule.preview(credentials.admin, day)).slots;
+    await service.bookPatient(credentials.patient, input(slots[0].startsAt));
+    await expect(service.bookPatient(credentials.patient, input(slots.at(-1)!.startsAt))).rejects.toMatchObject({ code: "PATIENT_DAILY_LIMIT" });
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+});
+
 describe("doctor appointment list and basic cancellation", () => {
   it("lists minimal decrypted contacts and all statuses by clinic date, retaining cancelled history", async () => {
     const first = await service.bookPatient(credentials.patient, input());
