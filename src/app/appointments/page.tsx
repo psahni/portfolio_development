@@ -7,6 +7,7 @@ import { CalendarDays, Clock3, ShieldCheck } from "lucide-react";
 import { Brand } from "@/components/layout/brand";
 import { getPatientAppointmentsService } from "@/modules/booking/patient-server";
 import type { PatientAppointment } from "@/modules/booking/patient-appointments";
+import { rebookingPolicy } from "@/modules/booking/cancellation-policy";
 import { PatientActions } from "./patient-actions";
 import { CancelAppointment } from "./cancel-appointment";
 
@@ -21,7 +22,7 @@ function AppointmentCard({ appointment, canCancel = false }: { appointment: Pati
   const { timezone } = appointment, status = statuses[appointment.status];
   const date = new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(new Date(appointment.startsAt));
   const time = (value: string) => new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(value));
-  return <li className="ui-panel flex flex-wrap items-start justify-between gap-4"><div><h3 className="text-base font-semibold"><time dateTime={appointment.startsAt}>{date}</time></h3><p className="mt-3 flex items-center gap-2 text-sm"><Clock3 aria-hidden="true" className="size-4 text-muted-foreground" />{time(appointment.startsAt)} – {time(appointment.endsAt)}</p><p className="mt-2 text-xs text-muted-foreground">Timezone: {timezone}</p></div><div className="flex flex-wrap items-center gap-3"><span className={`rounded-md px-2.5 py-1 text-xs font-medium ${status.classes}`}>{status.label}</span>{canCancel && <CancelAppointment id={appointment.id} date={date} time={`${time(appointment.startsAt)} – ${time(appointment.endsAt)}`} timezone={timezone} />}</div></li>;
+  return <li className="ui-panel flex flex-wrap items-start justify-between gap-4"><div><h3 className="text-base font-semibold"><time dateTime={appointment.startsAt}>{date}</time></h3><p className="mt-3 flex items-center gap-2 text-sm"><Clock3 aria-hidden="true" className="size-4 text-muted-foreground" />{time(appointment.startsAt)} – {time(appointment.endsAt)}</p><p className="mt-2 text-xs text-muted-foreground">Timezone: {timezone}</p></div><div className="flex flex-wrap items-center gap-3"><span className={`rounded-md px-2.5 py-1 text-xs font-medium ${status.classes}`}>{appointment.patientCancellationLate === true ? "Late cancellation" : status.label}</span>{canCancel && <CancelAppointment id={appointment.id} date={date} time={`${time(appointment.startsAt)} – ${time(appointment.endsAt)}`} timezone={timezone} />}{appointment.status === "confirmed" && !canCancel && <p className="ui-hint">This visit has started. Please contact the clinic for help.</p>}</div>{appointment.status === "cancelled" && <div className="w-full border-t pt-4"><p className="ui-hint">{rebookingPolicy}</p><Button asChild variant="outline" size="sm" className="mt-3"><Link href="/book">Book another appointment</Link></Button></div>}</li>;
 }
 export default async function MyAppointments() {
   const { total, upcoming, history } = await getPatientAppointmentsService().view(await headers()).catch((error: unknown) => {

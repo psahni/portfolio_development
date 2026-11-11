@@ -39,7 +39,8 @@ async function open(page: Page) {
 test("mobile keyboard cancellation confirms, releases the slot and retains cancelled history", async ({ page }, testInfo) => {
   await setup(page); const booked = await book(page); await page.reload(); await page.setViewportSize({ width: 390, height: 844 });
   const trigger = page.getByRole("button", { name: "Cancel appointment", exact: true }); await trigger.focus(); await trigger.press("Enter");
-  const modal = dialog(page); await expect(modal.getByRole("heading")).toBeFocused(); await expect(modal).toContainText("9:00 AM UTC");
+  const modal = dialog(page); await expect(modal.getByRole("heading", { name: "Cancel this appointment?", exact: true })).toBeFocused(); await expect(modal).toContainText("9:00 AM UTC");
+  await expect(modal).toContainText("less than 2 hours’ notice is recorded as a late cancellation");
   await page.keyboard.press("Shift+Tab"); await expect(modal.getByRole("button", { name: "Cancel appointment", exact: true })).toBeFocused();
   await page.keyboard.press("Tab"); await expect(modal.getByRole("button", { name: "Close cancellation", exact: true })).toBeFocused();
   await page.keyboard.press("Tab"); await expect(modal.getByRole("button", { name: "Keep appointment", exact: true })).toBeFocused();
@@ -56,6 +57,10 @@ test("mobile keyboard cancellation confirms, releases the slot and retains cance
   expect(await state(booked.id)).toEqual({ status: "cancelled", reservation_id: null, cancellations: 1, reservations: 0 });
   const availability = await (await page.request.get(`/api/patient/availability?date=${day()}`)).json();
   expect(availability.availability.slots.some((slot: { startsAt: string }) => slot.startsAt === booked.startsAt)).toBe(true);
+  const rebook = page.getByRole("link", { name: "Book another appointment", exact: true });
+  await expect(rebook).toBeVisible(); await rebook.click(); await expect(page).toHaveURL(/\/book$/);
+  await page.goto("/appointments");
+  expect(await state(booked.id)).toMatchObject({ status: "cancelled", cancellations: 1, reservations: 0 });
   await page.reload(); await expect(page.getByRole("list", { name: "Appointment history", exact: true })).toContainText("Cancelled"); await expect(page.getByRole("button", { name: "Cancel appointment", exact: true })).toHaveCount(0);
 });
 
@@ -137,4 +142,40 @@ test("only an owned future confirmed appointment offers cancellation; forged IDs
     expect(response.status()).toBe(404); expect(await response.json()).toEqual({ code: "APPOINTMENT_NOT_FOUND", error: "This appointment was not found." });
   }
   expect(await state(booked.id)).toMatchObject({ status: "confirmed", cancellations: 0, reservations: 7 });
+});
+
+
+test("late cancellation releases the slot and shows its classification in patient history", async ({ page }) => {
+  await setup(page); const booked = await book(page);
+  await withDatabase(async (client) => {
+    const start = new Date(Date.now() + 60 * 60_000), end = new Date(start.getTime() + 20 * 60_000);
+    await client.query("UPDATE reservations SET starts_at=$1,ends_at=$2 WHERE id=(SELECT reservation_id FROM appointments WHERE id=$3)", [start,end,booked.id]);
+    await client.query("UPDATE appointments SET starts_at=$1,ends_at=$2 WHERE id=$3", [start,end,booked.id]);
+  });
+  await page.reload(); await open(page);
+  await dialog(page).getByRole("button", { name: "Cancel appointment", exact: true }).click();
+  await expect(page.getByRole("list", { name: "Appointment history", exact: true })).toContainText("Late cancellation");
+  await expect(page.getByRole("link", { name: "Book another appointment", exact: true })).toBeVisible();
+  expect(await state(booked.id)).toMatchObject({ status: "cancelled", cancellations: 1, reservations: 0 });
+});
+
+
+test("two cancellations require a three-hour wait before another booking", async ({ page }) => {
+  await setup(page);
+  for (let i = 0; i < 2; i++) {
+    const booked = await book(page);
+    const response = await page.request.post("/api/patient/appointments/cancel", { headers: { origin: new URL(page.url()).origin }, data: { appointmentId: booked.id } });
+    expect(response.status()).toBe(200);
+  }
+  await page.goto("/book");
+  await page.getByLabel("Appointment date", { exact: true }).fill(day());
+  await page.getByRole("button", { name: "Show times", exact: true }).click();
+  await page.getByRole("button", { name: "9:00 AM – 9:20 AM", exact: true }).click();
+  await page.getByLabel("Full name", { exact: true }).fill("Synthetic Patient");
+  await page.getByLabel("Phone number", { exact: true }).fill("+919876543210");
+  await page.getByRole("button", { name: "Review booking", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).not.toBeVisible();
+  await expect(page.locator("main").getByRole("alert")).toContainText("wait 3 hours");
+  await expect(page.locator("main").getByRole("alert")).toContainText("call the clinic");
 });

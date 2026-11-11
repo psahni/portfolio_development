@@ -28,7 +28,7 @@ export function createDoctorAppointmentsService(db: ApplicationDatabase, access:
       const protection = rows.length ? getProtection() : null;
       return { configured: true, date, timezone: config.timezone, appointments: rows.map((row) => ({
         id: row.id, startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString(), bookedTimezone: row.timezone,
-        status: row.status, contact: protection!.decrypt(row.id, row.contactCiphertext),
+        status: row.status, patientCancellationLate: row.patientCancellationLate, contact: protection!.decrypt(row.id, row.contactCiphertext),
         canCancel: row.status === "confirmed" && row.startsAt > now,
         cancellation: row.cancelledByStaffId ? { reason: row.cancellationReason!, rebookingInstruction: row.rebookingInstruction!,
           originalTimeBlocked: row.originalTimeBlocked, cancelledAt: row.cancelledAt!.toISOString() } : null,

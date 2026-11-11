@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+import { cancellationPolicy, rebookingPolicy } from "@/modules/booking/cancellation-policy";
+
 type Props = { id: string; date: string; time: string; timezone: string };
 
 function containFocus(event: KeyboardEvent<HTMLDialogElement>) {
@@ -53,6 +55,9 @@ export function CancelAppointment({ id, date, time, timezone }: Props) {
       <div className="flex items-start justify-between gap-4"><h2 ref={title} tabIndex={-1} id={`cancel-title-${id}`} className="text-xl font-semibold tracking-tight">Cancel this appointment?</h2><Button type="button" variant="outline" size="sm" aria-label="Close cancellation" disabled={pending} onClick={close}><X aria-hidden="true" /></Button></div>
       <div className="my-5 rounded-lg bg-muted p-4 text-sm"><p className="font-medium">{date}</p><p className="mt-2">{time}</p><p className="mt-1 text-xs text-muted-foreground">{timezone}</p></div>
       <p id={`cancel-help-${id}`} className="ui-hint">This will cancel your visit and release its reserved time. The cancelled appointment will stay in your history.</p>
+      <h3 className="mt-4 text-sm font-semibold">Cancellation policy</h3>
+      <p className="ui-hint mt-2">{cancellationPolicy}</p>
+      <p className="ui-hint mt-3">{rebookingPolicy}</p>
       {error && <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       {signInRequired && <Link href="/login" className="mt-4 block text-sm text-primary underline">Sign in again</Link>}
       <div className="mt-6 flex flex-wrap gap-3" aria-busy={pending}>

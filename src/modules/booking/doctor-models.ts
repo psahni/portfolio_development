@@ -16,6 +16,7 @@ export const doctorCancellationSchema = z.object({
 export type DoctorAppointment = {
   id: string; startsAt: string; endsAt: string; bookedTimezone: string;
   status: "confirmed" | "cancelled" | "completed" | "no_show";
+  patientCancellationLate: boolean | null;
   contact: PatientContact; canCancel: boolean;
   cancellation: { reason: string; rebookingInstruction: string; originalTimeBlocked: boolean; cancelledAt: string } | null;
 };

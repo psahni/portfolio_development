@@ -8,6 +8,7 @@ import type { PatientPrincipal } from "@/modules/identity/patient-access";
 type PatientAccess = { requirePatientAccess(headers: Headers): Promise<PatientPrincipal> };
 export type PatientAppointment = {
   id: string; startsAt: string; endsAt: string; timezone: string;
+  patientCancellationLate: boolean | null;
   status: "confirmed" | "cancelled" | "completed" | "no_show";
 };
 
@@ -16,7 +17,7 @@ export function createPatientAppointmentsService(db: ApplicationDatabase, access
     const patient = await access.requirePatientAccess(headers);
     // Ownership comes only from the patient session. Contact matches never grant access.
     const rows = await db.select({ id: appointments.id, startsAt: appointments.startsAt, endsAt: appointments.endsAt,
-      timezone: appointments.timezone, status: appointments.status }).from(appointments)
+      timezone: appointments.timezone, status: appointments.status, patientCancellationLate: appointments.patientCancellationLate }).from(appointments)
       .where(eq(appointments.patientUserId, patient.userId)).orderBy(asc(appointments.startsAt), asc(appointments.id));
     return rows.map((row) => ({ ...row, startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString() }));
   }

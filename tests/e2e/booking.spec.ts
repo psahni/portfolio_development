@@ -90,6 +90,7 @@ test("mobile keyboard booking preserves the destination, registers a patient and
   expect(await counts()).toEqual({ appointments: 0, reservations: 0, audit: 0, receipts: 0 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).toContainText("less than 2 hours’ notice is recorded as a late cancellation");
   await page.screenshot({ path: testInfo.outputPath("mobile-booking-review.png") });
   const confirm = page.getByRole("button", { name: "Confirm booking", exact: true }); await confirm.focus(); await confirm.press("Enter");
   await expect(page.getByRole("heading", { name: "Appointment confirmed", exact: true })).toBeFocused();
@@ -123,6 +124,8 @@ test("a stale slot refreshes choices, retains details and needs an explicit new 
   const stale = availability.slots[0];
   await withDatabase(async (client) => { await client.query("INSERT INTO reservations (doctor_id, kind, starts_at, ends_at, reason) VALUES (1, 'block', $1, $2, 'private break')", [stale.startsAt, stale.endsAt]); });
   await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).not.toBeVisible();
+  await expect(page.locator("main").getByRole("alert")).toHaveCount(1);
   await expect(page.locator("main").getByRole("alert")).toContainText("no longer available");
   await expect(page.locator("main").getByRole("alert")).toBeFocused();
   await expect(page.getByRole("button", { name: "9:00 AM – 9:20 AM", exact: true })).toHaveCount(0);
@@ -246,4 +249,23 @@ test("admin can copy the configured hosted link and website button", async ({ pa
   await page.setViewportSize({ width: 320, height: 800 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("mobile-booking-link.png"), fullPage: true });
+});
+
+
+test("a patient cannot confirm a second appointment on the same clinic date", async ({ page }) => {
+  await seedClinic(); await signIn(page); await showTimes(page); await review(page);
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Appointment confirmed", exact: true })).toBeVisible();
+  await page.goto("/book");
+  await page.getByLabel("Appointment date", { exact: true }).fill(day());
+  await page.getByRole("button", { name: "Show times", exact: true }).click();
+  await page.getByRole("button", { name: "9:20 AM – 9:40 AM", exact: true }).click();
+  await page.getByLabel("Full name", { exact: true }).fill("Synthetic Visitor");
+  await page.getByLabel("Phone number", { exact: true }).fill("+919876543210");
+  await page.getByRole("button", { name: "Review booking", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).not.toBeVisible();
+  await expect(page.locator("main").getByRole("alert")).toContainText("You already have an appointment on this clinic date");
+  await expect(page.locator("main").getByRole("alert")).toBeFocused();
+  expect(await counts()).toEqual({ appointments: 1, reservations: 1, audit: 1, receipts: 1 });
 });
