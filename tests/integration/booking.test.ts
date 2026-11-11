@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { Client } from "pg";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { createDatabase } from "@/db/connection";
@@ -150,6 +150,54 @@ describe("patient daily booking limit", () => {
     await service.bookPatient(credentials.patient, input(slots[0].startsAt));
     await expect(service.bookPatient(credentials.patient, input(slots.at(-1)!.startsAt))).rejects.toMatchObject({ code: "PATIENT_DAILY_LIMIT" });
     expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+});
+
+describe("patient cancellation cooldown", () => {
+  it("waits exactly three hours after two cancellations, then starts a new two-cancellation cycle", async () => {
+    const firstInput = input(), first = await service.bookPatient(credentials.patient, firstInput);
+    await cancellationService().cancel(credentials.patient, { appointmentId: first.id });
+    now = new Date(now.getTime() + 60_000);
+    const second = await service.bookPatient(credentials.patient, input());
+    await cancellationService().cancel(credentials.patient, { appointmentId: second.id });
+    const secondCancelledAt = now.getTime();
+    // Old cancellations had no dedicated metadata; their audit records remain usable.
+    await database.db.update(appointments).set({ patientCancelledAt: null, patientCancellationLate: null }).where(eq(appointments.id, first.id));
+    const rejected = await Promise.allSettled([service.bookPatient(credentials.patient, input()), service.bookPatient(credentials.patient, input(`${date}T09:20:00Z`))]);
+    expect(rejected).toHaveLength(2);
+    for (const result of rejected) expect(result).toMatchObject({ status: "rejected", reason: { code: "PATIENT_CANCELLATION_COOLDOWN" } });
+    expect(await service.bookPatient(credentials.patient, firstInput)).toEqual(first);
+    await service.bookPatient(credentials.other, input(`${date}T09:20:00Z`));
+    await service.bookForClinic(credentials.staff, clinicInput(`${date}T09:40:00Z`));
+    await service.bookPatient(credentials.patient, input("2026-11-11T09:00:00Z"));
+    now = new Date(secondCancelledAt + 3 * 60 * 60 * 1000 - 1);
+    await expect(service.bookPatient(credentials.patient, input())).rejects.toMatchObject({ code: "PATIENT_CANCELLATION_COOLDOWN" });
+    now = new Date(secondCancelledAt + 3 * 60 * 60 * 1000);
+    const third = await service.bookPatient(credentials.patient, input());
+    await cancellationService().cancel(credentials.patient, { appointmentId: third.id });
+    const fourth = await service.bookPatient(credentials.patient, input());
+    await cancellationService().cancel(credentials.patient, { appointmentId: fourth.id });
+    await expect(service.bookPatient(credentials.patient, input())).rejects.toMatchObject({ code: "PATIENT_CANCELLATION_COOLDOWN" });
+    expect(await counts()).toEqual([7, 3, 11, 7]);
+  });
+  it("extends the wait for older cancellation history that violated the new rule", async () => {
+    const start = now.getTime(), ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const first = await service.bookPatient(credentials.patient, input());
+      await cancellationService().cancel(credentials.patient, { appointmentId: first.id }); ids.push(first.id);
+      // Create legacy history through the staff-exempt path, then link the patient
+      // directly in the synthetic test to model data saved before enforcement.
+      if (i === 1) break;
+      now = new Date(now.getTime() + 60_000);
+    }
+    const legacy = await service.bookForClinic(credentials.staff, clinicInput());
+    await doctorService().cancel(credentials.admin, doctorInput(legacy.id));
+    await database.db.update(bookingAudit).set({ actorKind: "patient", actorId: patientId, createdAt: new Date(start + 2 * 60_000) }).where(and(eq(bookingAudit.appointmentId, legacy.id), eq(bookingAudit.action, "cancelled")));
+    await database.db.update(appointments).set({ source: "patient", patientUserId: patientId, createdByStaffId: null, cancelledByStaffId: null, cancelledAt: null, cancellationReason: null, rebookingInstruction: null, originalTimeBlocked: false }).where(eq(appointments.id, legacy.id));
+    now = new Date(start + 2 * 60_000 + 3 * 60 * 60 * 1000 - 1);
+    await expect(service.bookPatient(credentials.patient, input())).rejects.toMatchObject({ code: "PATIENT_CANCELLATION_COOLDOWN" });
+    now = new Date(now.getTime() + 1);
+    expect((await service.bookPatient(credentials.patient, input())).status).toBe("confirmed");
   });
 });
 

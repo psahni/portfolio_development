@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, eq, gt, gte, lt, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, lt, ne, sql } from "drizzle-orm";
 import type { ApplicationDatabase } from "@/db/connection";
 import { patientSession, patientUser, staffAccess, staffSession } from "@/db/schema/auth";
 import { appointments, bookingAudit, bookingRequests } from "@/db/schema/booking";
@@ -19,6 +19,7 @@ type BookingAccess = {
 };
 type BookingInput = { requestId: string; startsAt: string; name: string; phone: string; email?: string };
 const RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const CANCELLATION_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 
 async function assertActorActive(tx: Transaction, actor: BookingActor): Promise<string | undefined> {
   // Verify again after acquiring the schedule lock: queued requests may outlive a session
@@ -82,6 +83,23 @@ export function createBookingService(db: ApplicationDatabase, access: BookingAcc
             eq(appointments.doctorId, 1), eq(appointments.patientUserId, actor.userId), ne(appointments.status, "cancelled"),
             gte(appointments.startsAt, bounds.start), lt(appointments.startsAt, bounds.end))).limit(1);
           if (existing) throw new BookingError(409, "PATIENT_DAILY_LIMIT", "You already have an appointment on this clinic date. To choose another time, cancel your existing appointment first, then book again.");
+          // Audit history also covers cancellations recorded before patientCancelledAt existed.
+          const cancellations = await tx.select({ at: bookingAudit.createdAt }).from(bookingAudit)
+            .innerJoin(appointments, eq(appointments.id, bookingAudit.appointmentId))
+            .where(and(eq(appointments.doctorId, 1), eq(appointments.patientUserId, actor.userId),
+              eq(appointments.status, "cancelled"), gte(appointments.startsAt, bounds.start), lt(appointments.startsAt, bounds.end),
+              eq(bookingAudit.action, "cancelled"), eq(bookingAudit.actorKind, "patient"), eq(bookingAudit.actorId, actor.userId)))
+            .orderBy(asc(bookingAudit.createdAt), asc(bookingAudit.id));
+          let cancellationsInCycle = 0, waitUntil = 0;
+          for (const cancellation of cancellations) {
+            const at = cancellation.at.getTime();
+            // Older data can contain cancellations made during a cooldown; extend the wait.
+            if (at < waitUntil) { waitUntil = at + CANCELLATION_COOLDOWN_MS; continue; }
+            cancellationsInCycle++;
+            if (cancellationsInCycle === 2) { waitUntil = at + CANCELLATION_COOLDOWN_MS; cancellationsInCycle = 0; }
+          }
+          if (now.getTime() < waitUntil) throw new BookingError(409, "PATIENT_CANCELLATION_COOLDOWN", "After two cancellations for this clinic date, wait 3 hours from the latest cancellation before booking again, or call the clinic for help.");
+
         }
 
         const id = randomUUID();
