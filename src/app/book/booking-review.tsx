@@ -40,7 +40,7 @@ export function BookingReview(props: Props) {
     <dl className="space-y-4 text-sm"><div><dt className="text-muted-foreground">Name</dt><dd className="mt-1 break-words font-medium">{name}</dd></div><div><dt className="text-muted-foreground">Verified email</dt><dd className="mt-1 break-all">{email}</dd></div><div><dt className="text-muted-foreground">Phone number</dt><dd className="mt-1">{phone}</dd></div></dl>
     <p id="booking-review-help" className="ui-hint mt-5 text-xs">Your time is booked only after confirmation. Availability is checked again when you confirm.</p>
     <p className="ui-hint mt-4 text-xs">{cancellationPolicy} {rebookingPolicy}</p>
-    {error && <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+    {open && error && <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {signInRequired && <Link href="/login?next=/book" className="mt-4 block text-sm font-medium text-primary underline">Sign in again to book</Link>}
     <div aria-busy={pending} className="mt-5 space-y-3"><Button type="button" onClick={onConfirm} disabled={pending || signInRequired} className="w-full">{pending ? "Confirming…" : uncertain ? "Retry confirmation" : "Confirm booking"}</Button><Button type="button" variant="outline" className="w-full" disabled={locked} onClick={onEdit}>Edit details</Button></div>
     {uncertain && <Link href="/appointments" className="mt-4 block text-center text-sm text-primary underline">Check My appointments</Link>}

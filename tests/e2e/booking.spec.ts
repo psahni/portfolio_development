@@ -124,6 +124,8 @@ test("a stale slot refreshes choices, retains details and needs an explicit new 
   const stale = availability.slots[0];
   await withDatabase(async (client) => { await client.query("INSERT INTO reservations (doctor_id, kind, starts_at, ends_at, reason) VALUES (1, 'block', $1, $2, 'private break')", [stale.startsAt, stale.endsAt]); });
   await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).not.toBeVisible();
+  await expect(page.locator("main").getByRole("alert")).toHaveCount(1);
   await expect(page.locator("main").getByRole("alert")).toContainText("no longer available");
   await expect(page.locator("main").getByRole("alert")).toBeFocused();
   await expect(page.getByRole("button", { name: "9:00 AM – 9:20 AM", exact: true })).toHaveCount(0);
