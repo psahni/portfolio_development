@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { patientUser, staffUser } from "./auth";
 import { doctorProfile } from "./clinic";
 import { reservations } from "./scheduling";
@@ -21,6 +21,11 @@ export const appointments = pgTable("appointments", {
   durationMinutes: integer("duration_minutes").notNull(),
   bufferBeforeMinutes: integer("buffer_before_minutes").notNull(),
   bufferAfterMinutes: integer("buffer_after_minutes").notNull(),
+  cancelledByStaffId: text("cancelled_by_staff_id").references(() => staffUser.id),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  cancellationReason: text("cancellation_reason"),
+  rebookingInstruction: text("rebooking_instruction"),
+  originalTimeBlocked: boolean("original_time_blocked").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   check("appointment_single_doctor", sql`${table.doctorId} = 1`),
@@ -29,6 +34,7 @@ export const appointments = pgTable("appointments", {
   check("confirmed_appointment_reservation", sql`${table.status} <> 'confirmed' or ${table.reservationId} is not null`),
   check("appointment_duration", sql`${table.durationMinutes} between 5 and 240 and ${table.endsAt} = ${table.startsAt} + ${table.durationMinutes} * interval '1 minute'`),
   check("appointment_buffers", sql`${table.bufferBeforeMinutes} between 0 and 120 and ${table.bufferAfterMinutes} between 0 and 120`),
+  check("appointment_doctor_cancellation", sql`(${table.cancelledByStaffId} is null and ${table.cancelledAt} is null and ${table.cancellationReason} is null and ${table.rebookingInstruction} is null and ${table.originalTimeBlocked} = false) or (${table.cancelledByStaffId} is not null and ${table.status} = 'cancelled' and ${table.cancelledAt} is not null and ${table.cancellationReason} is not null and char_length(${table.cancellationReason}) between 1 and 160 and ${table.rebookingInstruction} is not null and char_length(${table.rebookingInstruction}) <= 300)`),
   index("appointment_doctor_start").on(table.doctorId, table.startsAt),
   index("appointment_patient_start").on(table.patientUserId, table.startsAt),
 ]);

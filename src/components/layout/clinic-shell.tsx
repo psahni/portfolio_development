@@ -3,10 +3,11 @@ import { ArrowLeft, CalendarDays, Clock3, LayoutDashboard, Settings2 } from "luc
 import type { ReactNode } from "react";
 import { Brand } from "./brand";
 
-type Section = "workspace" | "calendar" | "availability" | "settings";
+type Section = "workspace" | "calendar" | "appointments" | "availability" | "settings";
 const navigation = [
   { key: "workspace", label: "Overview", href: "/admin/workspace", icon: LayoutDashboard },
   { key: "calendar", label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
+  { key: "appointments", label: "Appointments", href: "/admin/appointments", icon: CalendarDays },
   { key: "availability", label: "Availability", href: "/admin/availability", icon: Clock3 },
   { key: "settings", label: "Clinic settings", href: "/admin/settings", icon: Settings2 },
 ] as const;

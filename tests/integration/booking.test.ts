@@ -21,6 +21,8 @@ import { createHostedAvailabilityHandler, createPatientBookingHandler } from "@/
 import { createPatientAppointmentsService } from "@/modules/booking/patient-appointments";
 import { createPatientCancellationService } from "@/modules/booking/patient-cancellation";
 import { createPatientCancellationHandler } from "@/modules/booking/patient-cancellation-http";
+import { createDoctorAppointmentsService } from "@/modules/booking/doctor-appointments";
+import { createDoctorAppointmentsHandler } from "@/modules/booking/doctor-http";
 import { unconfiguredMailer } from "@/platform/mail";
 
 const baseURL = "http://localhost:3000", date = "2026-11-10";
@@ -32,6 +34,7 @@ let service: ReturnType<typeof createBookingService>;
 let clinic: ReturnType<typeof createClinicService>;
 let schedule: ReturnType<typeof createSchedulingService>;
 let now: Date, adminId: string, staffId: string, patientId: string, otherPatientId: string;
+let originalAdminPinHash: string;
 let originalPatientSessions: (typeof patientSession.$inferSelect)[], originalStaffSessions: (typeof staffSession.$inferSelect)[];
 const credentials: Record<string, Headers> = { anonymous: new Headers() };
 const clock = () => now;
@@ -39,6 +42,9 @@ const bookingHandler = () => createPatientBookingHandler(() => service, () => ba
 const availabilityHandler = () => createHostedAvailabilityHandler(() => createHostedBookingService(database.db, identity.patientAccess, clock));
 const cancellationService = () => createPatientCancellationService(database.db, identity.patientAccess, clock);
 const cancellationHandler = () => createPatientCancellationHandler(cancellationService, () => baseURL);
+const doctorService = () => createDoctorAppointmentsService(database.db, identity.access, () => protection, clock);
+const doctorHandler = () => createDoctorAppointmentsHandler(doctorService, () => baseURL);
+const doctorInput = (appointmentId: string, blockOriginalTime = false) => ({ appointmentId, reason: "Doctor unavailable", rebookingInstruction: "Please book another available time.", blockOriginalTime });
 function httpRequest(path: string, role = "patient", body?: unknown, origin: string | null = baseURL, method = body === undefined ? "GET" : "POST") {
   const headers = new Headers(credentials[role]);
   if (origin !== null) headers.set("origin", origin);
@@ -70,6 +76,7 @@ beforeAll(async () => {
   const staffSecret = "booking-staff-" + "b".repeat(48);
   await bootstrapAdmin(database.db, { email: adminEmail, name: "Synthetic Doctor", pin: "4821", staffSecret });
   adminId = (await database.db.select().from(staffAccess).where(eq(staffAccess.role, "admin")))[0].userId;
+  originalAdminPinHash = (await database.db.select().from(staffAccess).where(eq(staffAccess.userId, adminId)))[0].adminPinHash!;
   staffId = randomUUID(); patientId = randomUUID(); otherPatientId = randomUUID();
   await database.db.insert(staffUser).values({ id: staffId, name: "Synthetic Staff", email: staffEmail });
   await database.db.insert(staffAccess).values({ userId: staffId, role: "staff" });
@@ -93,10 +100,208 @@ beforeEach(async () => {
   await database.db.delete(patientSession); await database.db.insert(patientSession).values(originalPatientSessions);
   await database.db.delete(staffSession); await database.db.insert(staffSession).values(originalStaffSessions);
   await database.db.update(staffAccess).set({ active: true });
+  await database.db.update(staffAccess).set({ role: "admin", adminPinHash: originalAdminPinHash }).where(eq(staffAccess.userId, adminId));
   await database.db.update(patientUser).set({ emailVerified: true });
   await clinic.save(credentials.admin, configuration());
 });
 afterAll(async () => { await database?.pool.end(); });
+
+describe("doctor appointment list and basic cancellation", () => {
+  it("lists minimal decrypted contacts and all statuses by clinic date, retaining cancelled history", async () => {
+    const first = await service.bookPatient(credentials.patient, input());
+    const second = await service.bookForClinic(credentials.staff, clinicInput(`${date}T09:20:00Z`));
+    await doctorService().cancel(credentials.admin, doctorInput(first.id));
+    const response = await doctorHandler()(httpRequest(`appointments?date=${date}`, "admin"));
+    expect(response.status).toBe(200); expect(response.headers.get("Cache-Control")).toBe("private, no-store"); expect(response.headers.get("Vary")).toBe("Cookie");
+    const data = await response.json();
+    expect(data).toMatchObject({ configured: true, date, timezone: "UTC" });
+    expect(data.appointments.map((a: { id: string }) => a.id)).toEqual([first.id, second.id]);
+    expect(data.appointments[0]).toMatchObject({ status: "cancelled", canCancel: false, contact: { name: "Synthetic Patient", email: adminEmail, phone: "+919876543210" }, cancellation: { reason: "Doctor unavailable", originalTimeBlocked: false } });
+    expect(data.appointments[1]).toMatchObject({ status: "confirmed", canCancel: true, cancellation: null });
+    for (const value of ["contactCiphertext", "patientUserId", "cancelledByStaffId", "sessionId", "reservationId", "actorId"]) expect(JSON.stringify(data)).not.toContain(value);
+    await database.db.update(appointments).set({ status: "no_show" }).where(eq(appointments.id, second.id));
+    expect((await doctorService().view(credentials.admin, date)).appointments[1]).toMatchObject({ status: "no_show", canCancel: false });
+    await database.db.update(appointments).set({ status: "completed" }).where(eq(appointments.id, second.id));
+    expect((await doctorService().view(credentials.admin, date)).appointments[1]).toMatchObject({ status: "completed", canCancel: false });
+    const patientList = await createPatientAppointmentsService(database.db, identity.patientAccess, clock).view(credentials.patient);
+    expect(patientList.history[0].status).toBe("cancelled");
+    expect(JSON.stringify(patientList)).not.toContain("Doctor unavailable");
+  });
+  it("selects the clinic-local start date with half-open midnight bounds", async () => {
+    const config = { ...configuration(), timezone: "Asia/Kolkata" };
+    config.weeklyHours.forEach((d) => { d.intervals = [{ start: "00:00", end: "02:00" }, { start: "23:00", end: "23:59" }]; });
+    await clinic.save(credentials.admin, config);
+    await service.bookPatient(credentials.patient, input("2026-11-09T17:30:00Z"));
+    const midnight = await service.bookPatient(credentials.patient, input("2026-11-09T18:30:00Z"));
+    await service.bookPatient(credentials.patient, input("2026-11-10T18:30:00Z"));
+    expect((await doctorService().view(credentials.admin, date)).appointments.map((a) => a.id)).toEqual([midnight.id]);
+    now = new Date("2026-11-09T19:00:00Z");
+    expect((await doctorService().view(credentials.admin)).date).toBe(date);
+  });
+  it.each(["2026-03-08", "2026-11-01"])("lists bookings on the DST transition date %s", async (day) => {
+    now = new Date(new Date(`${day}T00:00Z`).getTime() - 86_400_000);
+    const config = { ...configuration(), timezone: "America/New_York" };
+    config.weeklyHours.forEach((d) => { d.intervals = [{ start: "00:00", end: "05:00" }]; });
+    await clinic.save(credentials.admin, config);
+    const slots = (await schedule.preview(credentials.admin, day)).slots;
+    const booked = await service.bookPatient(credentials.patient, input(slots.at(-1)!.startsAt));
+    expect((await doctorService().view(credentials.admin, day)).appointments.map((a) => a.id)).toEqual([booked.id]);
+  });
+  it("handles empty/unconfigured lists without needing a contact key and validates dates", async () => {
+    const noKey = createDoctorAppointmentsService(database.db, identity.access, () => { throw new Error("missing secret key"); }, clock);
+    expect((await noKey.view(credentials.admin, date)).appointments).toEqual([]);
+    for (const day of ["2026-02-30", "bad", "", "2026-11-10T09:00:00Z"]) expect((await doctorHandler()(httpRequest(`appointments?date=${day}`, "admin"))).status).toBe(400);
+    await database.db.delete(clinicSettings);
+    expect(await noKey.view(credentials.admin)).toEqual({ configured: false, date: "", timezone: "", appointments: [] });
+  });
+  it.each([false, true])("cancels atomically with original-time block=%s, preserving contacts, snapshots and receipts", async (block) => {
+    await clinic.save(credentials.admin, { ...configuration(), bufferBeforeMinutes: 5, bufferAfterMinutes: 10 });
+    const slot = (await schedule.preview(credentials.admin, date)).slots[0];
+    const booked = await service.bookPatient(credentials.patient, input(slot.startsAt));
+    const [before] = await database.db.select().from(appointments), [occupied] = await database.db.select().from(reservations);
+    await clinic.save(credentials.admin, { ...configuration(), durationMinutes: 30 });
+    const response = await doctorHandler()(httpRequest("appointments", "admin", doctorInput(booked.id, block)));
+    expect(response.status).toBe(200); expect(await response.json()).toEqual({ appointment: { id: booked.id, status: "cancelled" } });
+    const [after] = await database.db.select().from(appointments);
+    expect(after).toEqual({ ...before, status: "cancelled", reservationId: null, cancelledAt: now, cancelledByStaffId: adminId,
+      cancellationReason: "Doctor unavailable", rebookingInstruction: "Please book another available time.", originalTimeBlocked: block });
+    expect(await counts()).toEqual([1, block ? 1 : 0, 2, 1]);
+    if (block) expect(await database.db.select().from(reservations)).toEqual([{ ...occupied, kind: "block", reason: "Doctor unavailable" }]);
+    expect((await database.db.select().from(bookingRequests))[0].receipt).toEqual(booked);
+    expect((await database.db.select().from(bookingAudit).where(eq(bookingAudit.action, "cancelled")))[0]).toMatchObject({ actorKind: "staff", actorId: adminId, createdAt: now });
+    expect((await database.db.execute(sql`select conname from pg_constraint where conname = 'reservation_no_overlap'`)).rows).toHaveLength(1);
+    await migrate(database.db, { migrationsFolder: "./drizzle" });
+    expect((await database.db.select().from(appointments))[0]).toEqual(after);
+  });
+  it.each([false, true])("replays concurrent cancellations once (block=%s) and rejects changed retry details", async (block) => {
+    const booked = await service.bookPatient(credentials.patient, input()), value = doctorInput(booked.id, block);
+    const results = await Promise.all(Array.from({ length: 8 }, () => doctorService().cancel(credentials.admin, value)));
+    expect(results).toEqual(Array.from({ length: 8 }, () => ({ id: booked.id, status: "cancelled" })));
+    for (const change of [{ reason: "Different" }, { rebookingInstruction: "Different" }, { blockOriginalTime: !block }]) {
+      await expect(doctorService().cancel(credentials.admin, { ...value, ...change })).rejects.toMatchObject({ code: "CANCELLATION_CONFLICT" });
+    }
+    now = new Date("2026-11-15T00:00Z");
+    expect(await doctorService().cancel(credentials.admin, value)).toEqual(results[0]);
+    expect(await counts()).toEqual([1, block ? 1 : 0, 2, 1]);
+  });
+  it("never changes replacement occupancy on a retry and never overwrites a patient cancellation", async () => {
+    const first = await service.bookPatient(credentials.patient, input()), value = doctorInput(first.id);
+    await doctorService().cancel(credentials.admin, value);
+    const replacement = await service.bookForClinic(credentials.staff, clinicInput());
+    const before = await database.db.select().from(reservations);
+    await doctorService().cancel(credentials.admin, value);
+    expect(await database.db.select().from(reservations)).toEqual(before);
+    await doctorService().cancel(credentials.admin, doctorInput(replacement.id));
+    const patientCancelled = await service.bookPatient(credentials.patient, input());
+    await cancellationService().cancel(credentials.patient, { appointmentId: patientCancelled.id });
+    await expect(doctorService().cancel(credentials.admin, doctorInput(patientCancelled.id, true))).rejects.toMatchObject({ code: "CANCELLATION_CONFLICT" });
+    expect((await database.db.select().from(appointments).where(eq(appointments.id, patientCancelled.id)))[0].cancelledByStaffId).toBeNull();
+  });
+  it("a saved block can be removed normally, and retrying cancellation does not restore it", async () => {
+    const booked = await service.bookPatient(credentials.patient, input()), value = doctorInput(booked.id, true);
+    await doctorService().cancel(credentials.admin, value);
+    const [block] = await database.db.select().from(reservations);
+    await schedule.removeBreak(credentials.admin, { date, id: block.id });
+    const replacement = await service.bookPatient(credentials.other, input());
+    const before = await database.db.select().from(reservations);
+    await doctorService().cancel(credentials.admin, value);
+    expect(await database.db.select().from(reservations)).toEqual(before);
+    expect((await database.db.select().from(appointments).where(eq(appointments.id, replacement.id)))[0].status).toBe("confirmed");
+  });
+  it.each([false, true])("serializes doctor cancellation and patient/clinic rebooking (block=%s)", async (block) => {
+    const booked = await service.bookPatient(credentials.patient, input());
+    const results = await Promise.allSettled([doctorService().cancel(credentials.admin, doctorInput(booked.id, block)), service.bookForClinic(credentials.staff, clinicInput()), service.bookPatient(credentials.other, input())]);
+    expect(results[0].status).toBe("fulfilled");
+    expect(results.slice(1).filter((r) => r.status === "fulfilled").length).toBeLessThanOrEqual(block ? 0 : 1);
+    expect((await database.db.select().from(bookingAudit).where(eq(bookingAudit.action, "cancelled")))).toHaveLength(1);
+    if (block) expect((await database.db.select().from(reservations))[0].kind).toBe("block");
+  });
+  it("patient and doctor racing to cancel produce one audit and no partial block", async () => {
+    const booked = await service.bookPatient(credentials.patient, input());
+    const results = await Promise.allSettled([doctorService().cancel(credentials.admin, doctorInput(booked.id, true)), cancellationService().cancel(credentials.patient, { appointmentId: booked.id })]);
+    expect(results[1].status).toBe("fulfilled");
+    const [row] = await database.db.select().from(appointments);
+    expect(row.status).toBe("cancelled");
+    expect(await counts()).toEqual([1, row.cancelledByStaffId ? 1 : 0, 2, 1]);
+  });
+  it.each(["anonymous", "patient", "other", "staff"])("rejects %s list and cancellation access", async (role) => {
+    const booked = await service.bookPatient(credentials.patient, input());
+    const expected = role === "staff" ? 403 : 401;
+    expect((await doctorHandler()(httpRequest(`appointments?date=${date}`, role))).status).toBe(expected);
+    expect((await doctorHandler()(httpRequest("appointments", role, doctorInput(booked.id)))).status).toBe(expected);
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+  it.each(["revoked", "expired", "disabled", "demoted"])("rejects a %s admin on list, first cancellation and retry", async (state) => {
+    const booked = await service.bookPatient(credentials.patient, input()), value = doctorInput(booked.id);
+    await doctorService().cancel(credentials.admin, value);
+    if (state === "revoked") await database.db.delete(staffSession).where(eq(staffSession.userId, adminId));
+    if (state === "expired") await database.db.update(staffSession).set({ expiresAt: new Date(0) }).where(eq(staffSession.userId, adminId));
+    if (state === "disabled") await database.db.update(staffAccess).set({ active: false }).where(eq(staffAccess.userId, adminId));
+    if (state === "demoted") await database.db.update(staffAccess).set({ role: "staff", adminPinHash: null }).where(eq(staffAccess.userId, adminId));
+    for (const body of [undefined, value]) expect([401, 403]).toContain((await doctorHandler()(httpRequest("appointments", "admin", body))).status);
+    expect(await counts()).toEqual([1, 0, 2, 1]);
+  });
+  it.each(["revoked", "expired", "disabled", "demoted"])("rechecks a %s admin after the doctor lock wait", async (state) => {
+    const booked = await service.bookPatient(credentials.patient, input());
+    let passed!: () => void; const authenticated = new Promise<void>((resolve) => { passed = resolve; });
+    const guarded = createDoctorAppointmentsService(database.db, { async requireAdminAccess(headers) {
+      const principal = await identity.access.requireAdminAccess(headers); passed(); return principal;
+    } }, () => protection, clock);
+    const blocker = await database.pool.connect(); let pending: Promise<unknown> | undefined;
+    try {
+      await blocker.query("BEGIN"); await blocker.query("SELECT id FROM doctor_profile WHERE id = 1 FOR UPDATE");
+      pending = guarded.cancel(credentials.admin, doctorInput(booked.id, true));
+      const rejected = expect(pending).rejects.toMatchObject({ statusCode: 403 }); await authenticated;
+      if (state === "revoked") await database.db.delete(staffSession).where(eq(staffSession.userId, adminId));
+      if (state === "expired") await database.db.update(staffSession).set({ expiresAt: new Date(0) }).where(eq(staffSession.userId, adminId));
+      if (state === "disabled") await database.db.update(staffAccess).set({ active: false }).where(eq(staffAccess.userId, adminId));
+      if (state === "demoted") await database.db.update(staffAccess).set({ role: "staff", adminPinHash: null }).where(eq(staffAccess.userId, adminId));
+      await blocker.query("COMMIT"); await rejected; expect(await counts()).toEqual([1, 1, 1, 1]);
+    } finally { await blocker.query("ROLLBACK"); blocker.release(); await pending?.catch(() => {}); }
+  });
+  it.each(["started", "past", "completed", "no_show"])("rejects a %s visit without altering occupancy", async (state) => {
+    const booked = await service.bookPatient(credentials.patient, input());
+    if (state === "started") now = new Date(booked.startsAt);
+    if (state === "past") now = new Date(booked.endsAt);
+    if (state === "completed" || state === "no_show") await database.db.update(appointments).set({ status: state }).where(eq(appointments.id, booked.id));
+    expect((await doctorHandler()(httpRequest("appointments", "admin", doctorInput(booked.id, true)))).status).toBe(409);
+    expect((await doctorService().view(credentials.admin, date)).appointments[0].canCancel).toBe(false);
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+  it("validates strict input, origin and method, and returns a private not-found result", async () => {
+    const booked = await service.bookPatient(credentials.patient, input()), value = doctorInput(booked.id);
+    for (const origin of [null, "https://untrusted.example"]) expect((await doctorHandler()(httpRequest("appointments", "admin", value, origin))).status).toBe(403);
+    expect((await doctorHandler()(httpRequest("appointments", "admin", value, baseURL, "PUT"))).status).toBe(405);
+    for (const change of [{ appointmentId: "bad" }, { reason: " " }, { reason: "x".repeat(161) }, { reason: "hidden\nmedical" }, { rebookingInstruction: "x".repeat(301) }, { blockOriginalTime: "true" }, { role: "admin" }, { patientUserId: patientId }, { status: "cancelled" }]) {
+      expect((await doctorHandler()(httpRequest("appointments", "admin", { ...value, ...change }))).status).toBe(400);
+    }
+    const malformed = new Request(`${baseURL}/api/admin/appointments`, { method: "POST", headers: { origin: baseURL }, body: "{" });
+    expect((await doctorHandler()(malformed)).status).toBe(400);
+    expect((await doctorHandler()(httpRequest("appointments", "admin", doctorInput(randomUUID())))).status).toBe(404);
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+  it.each([false, true])("rolls back cancellation, metadata and optional block on audit failure (deferred=%s)", async (deferred) => {
+    const booked = await service.bookPatient(credentials.patient, input());
+    const before = await database.db.select().from(appointments), occupancy = await database.db.select().from(reservations);
+    await database.db.execute(sql`CREATE FUNCTION reject_doctor_cancellation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'private cancellation detail'; END $$`);
+    await database.db.execute(sql.raw(`CREATE ${deferred ? "CONSTRAINT" : ""} TRIGGER reject_doctor_cancellation ${deferred ? "AFTER" : "BEFORE"} INSERT ON booking_audit ${deferred ? "DEFERRABLE INITIALLY DEFERRED" : ""} FOR EACH ROW WHEN (NEW.action = 'cancelled') EXECUTE FUNCTION reject_doctor_cancellation()`));
+    try {
+      const response = await doctorHandler()(httpRequest("appointments", "admin", doctorInput(booked.id, true)));
+      expect(response.status).toBe(503); expect(await response.text()).not.toContain("private cancellation detail");
+      expect(await database.db.select().from(appointments)).toEqual(before); expect(await database.db.select().from(reservations)).toEqual(occupancy);
+      expect(await counts()).toEqual([1, 1, 1, 1]);
+    } finally { await database.db.execute(sql`DROP TRIGGER reject_doctor_cancellation ON booking_audit`); await database.db.execute(sql`DROP FUNCTION reject_doctor_cancellation()`); }
+    expect((await doctorHandler()(httpRequest("appointments", "admin", doctorInput(booked.id, true)))).status).toBe(200);
+  });
+  it("redacts contact decryption/configuration failures and can cancel without the encryption key", async () => {
+    const booked = await service.bookPatient(credentials.patient, input());
+    const broken = createDoctorAppointmentsService(database.db, identity.access, () => { throw new Error("private contact key"); }, clock);
+    const handler = createDoctorAppointmentsHandler(() => broken, () => baseURL);
+    const response = await handler(httpRequest(`appointments?date=${date}`, "admin"));
+    expect(response.status).toBe(503); expect(await response.text()).not.toContain("private contact key");
+    expect(await broken.cancel(credentials.admin, doctorInput(booked.id))).toEqual({ id: booked.id, status: "cancelled" });
+  });
+});
 
 describe("shared booking persistence", () => {
   it("replays migrations, retains the exclusion constraint and saves all records before confirming", async () => {

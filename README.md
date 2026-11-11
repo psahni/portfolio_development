@@ -12,6 +12,8 @@ Native booking for one clinic, one branch and one doctor. The selected patient-b
 
 **Doctor calendar (#20):** Open **Calendar** for Day/Week views: green Available, red Booked and amber Break cards, with text labels. Navigate dates or refresh to see current data in the clinic timezone. This view reads existing reservations, including occupancy saved by patient booking.
 
+**Doctor appointments (#9, first slice):** After applying the reviewed migration, the admin can open **Appointments** to see patient contacts and all visit statuses for a clinic-local date. Cancel a future confirmed visit with a short nonclinical reason, optional rebooking instruction and optional block of its original buffered time. Cancellation keeps history and commits all changes together. Automatic patient notices, rescheduling and status changes remain future work.
+
 ## Run locally
 
 Use Node.js 24 LTS (`.nvmrc`) or Node.js 26 and pnpm 12.18.0. Dependencies are pinned in `pnpm-lock.yaml`.
