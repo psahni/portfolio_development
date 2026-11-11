@@ -67,7 +67,7 @@ test("doctor reviews contacts, abandons cancellation by keyboard and cancels wit
   await page.screenshot({ path: testInfo.outputPath("mobile-doctor-cancellation.png") });
   await modal(page).getByRole("button", { name: "Cancel appointment", exact: true }).click();
   await expect(page.getByRole("list", { name: "Clinic appointments", exact: true })).toContainText("Cancelled");
-  await expect(page.getByText("Cancellation reason:")).toContainText("Doctor unavailable");
+  await expect(page.getByRole("list", { name: "Clinic appointments", exact: true })).toContainText("Cancellation reason: Doctor unavailable");
   const saved = await state(booked.id);
   expect(saved.appointment).toMatchObject({ status: "cancelled", reservation_id: null, original_time_blocked: true }); expect(saved.audit).toBe(1);
   expect(saved.reservations).toEqual([{ kind: "block", starts_at: new Date(`${day()}T09:00:00Z`), ends_at: new Date(`${day()}T09:35:00Z`) }]);
