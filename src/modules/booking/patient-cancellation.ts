@@ -8,6 +8,8 @@ import { reservations } from "@/db/schema/scheduling";
 import type { PatientPrincipal } from "@/modules/identity/patient-access";
 import { BookingError, patientCancellationSchema, type CancellationReceipt } from "./models";
 
+import { isLateCancellation } from "./cancellation-policy";
+
 type PatientAccess = { requirePatientAccess(headers: Headers): Promise<PatientPrincipal> };
 const notFound = () => new BookingError(404, "APPOINTMENT_NOT_FOUND", "This appointment was not found.");
 
@@ -34,10 +36,10 @@ export function createPatientCancellationService(db: ApplicationDatabase, access
       if (appointment.status === "cancelled") return receipt;
       const now = clock();
       if (appointment.status !== "confirmed" || appointment.startsAt <= now) {
-        throw new BookingError(409, "CANCELLATION_NOT_ALLOWED", "Only confirmed appointments that have not started can be cancelled.");
+        throw new BookingError(409, "CANCELLATION_NOT_ALLOWED", "Only confirmed appointments that have not started can be cancelled. Please contact the clinic for help.");
       }
       if (!appointment.reservationId) throw new Error("Appointment occupancy is missing.");
-      await tx.update(appointments).set({ status: "cancelled", reservationId: null }).where(eq(appointments.id, appointment.id));
+      await tx.update(appointments).set({ status: "cancelled", reservationId: null, patientCancelledAt: now, patientCancellationLate: isLateCancellation(appointment.startsAt, now) }).where(eq(appointments.id, appointment.id));
       const released = await tx.delete(reservations).where(and(eq(reservations.id, appointment.reservationId), eq(reservations.doctorId, 1), eq(reservations.kind, "appointment"))).returning({ id: reservations.id });
       if (released.length !== 1) throw new Error("Appointment occupancy could not be released.");
       await tx.insert(bookingAudit).values({ appointmentId: appointment.id, action: "cancelled", actorKind: "patient", actorId: patient.userId, createdAt: now });

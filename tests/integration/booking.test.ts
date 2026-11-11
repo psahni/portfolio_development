@@ -729,6 +729,23 @@ describe("hosted patient booking HTTP", () => {
 });
 
 describe("patient appointment cancellation", () => {
+  it.each([[7_200_001, false], [7_200_000, false], [7_199_999, true], [1, true]] as const)("records cancellation with %s ms notice, preserving it on retry", async (notice, late) => {
+    const booked = await service.bookPatient(credentials.patient, input());
+    now = new Date(Date.parse(booked.startsAt) - notice);
+    const cancelledAt = now;
+    await cancellationService().cancel(credentials.patient, { appointmentId: booked.id });
+    const [saved] = await database.db.select().from(appointments);
+    expect(saved).toMatchObject({ status: "cancelled", reservationId: null, patientCancelledAt: cancelledAt, patientCancellationLate: late });
+    const patientView = await createPatientAppointmentsService(database.db, identity.patientAccess, clock).view(credentials.patient);
+    expect(patientView.history[0]).toMatchObject({ patientCancellationLate: late });
+    expect((await doctorService().view(credentials.admin, date)).appointments[0]).toMatchObject({ patientCancellationLate: late });
+    now = new Date(Date.parse(booked.endsAt) + 1);
+    await cancellationService().cancel(credentials.patient, { appointmentId: booked.id });
+    expect((await database.db.select().from(appointments))[0]).toEqual(saved);
+    expect(await counts()).toEqual([1, 0, 2, 1]);
+    await expect(database.db.update(appointments).set({ patientCancellationLate: !late }).where(eq(appointments.id, booked.id))).rejects.toThrow();
+  });
+
   it("replays the migration and atomically retains history, releases buffered time and records an audit", async () => {
     await migrate(database.db, { migrationsFolder: "./drizzle" });
     await clinic.save(credentials.admin, { ...configuration(), timezone: "Asia/Kolkata", bufferBeforeMinutes: 5, bufferAfterMinutes: 10 });
@@ -740,7 +757,7 @@ describe("patient appointment cancellation", () => {
     expect(await response.json()).toEqual({ appointment: { id: booked.id, status: "cancelled" } });
     expect(await counts()).toEqual([1, 0, 2, 1]);
     const [after] = await database.db.select().from(appointments);
-    expect(after).toEqual({ ...before, status: "cancelled", reservationId: null });
+    expect(after).toEqual({ ...before, status: "cancelled", reservationId: null, patientCancelledAt: now, patientCancellationLate: false });
     expect((await database.db.select().from(bookingRequests))[0].receipt).toEqual(booked);
     const [audit] = await database.db.select().from(bookingAudit).where(eq(bookingAudit.action, "cancelled"));
     expect(audit).toMatchObject({ appointmentId: booked.id, actorKind: "patient", actorId: patientId, createdAt: now });
@@ -854,7 +871,7 @@ describe("patient appointment cancellation", () => {
       const response = await cancellationHandler()(httpRequest("appointments/cancel", "patient", { appointmentId: booked.id }));
       expect(response.status).toBe(503); expect(await response.text()).not.toContain("private cancellation failure");
       expect(await counts()).toEqual([1, 1, 1, 1]);
-      expect((await database.db.select().from(appointments))[0]).toMatchObject({ status: "confirmed", reservationId: expect.any(String) });
+      expect((await database.db.select().from(appointments))[0]).toMatchObject({ status: "confirmed", reservationId: expect.any(String), patientCancelledAt: null, patientCancellationLate: null });
     } finally { await database.db.execute(sql`DROP TRIGGER reject_patient_cancellation ON booking_audit`); await database.db.execute(sql`DROP FUNCTION reject_patient_cancellation()`); }
     expect((await cancellationHandler()(httpRequest("appointments/cancel", "patient", { appointmentId: booked.id }))).status).toBe(200);
     expect(await counts()).toEqual([1, 0, 2, 1]);

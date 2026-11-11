@@ -12,6 +12,8 @@ Native booking for one clinic, one branch and one doctor. The selected patient-b
 
 **Doctor calendar (#20):** Open **Calendar** for Day/Week views: green Available, red Booked and amber Break cards, with text labels. Navigate dates or refresh to see current data in the clinic timezone. This view reads existing reservations, including occupancy saved by patient booking.
 
+**Patient cancellation policy (#32):** Give at least two hours’ notice. Patients may cancel until the visit starts; less than two hours is recorded as a late cancellation and shown in patient/admin history. Exactly two hours is on time. No cancellation fees or automatic booking bans. To change time, cancel and use **Book another appointment**; availability is checked again and the original stays cancelled if the new booking is abandoned. After start, contact the clinic. Older cancellations remain unclassified. Apply the reviewed migration explicitly before using this feature.
+
 **Doctor appointments (#9, first slice):** After applying the reviewed migration, the admin can open **Appointments** to see patient contacts and all visit statuses for a clinic-local date. Cancel a future confirmed visit with a short nonclinical reason, optional rebooking instruction and optional block of its original buffered time. Cancellation keeps history and commits all changes together. Automatic patient notices, rescheduling and status changes remain future work.
 
 ## Run locally

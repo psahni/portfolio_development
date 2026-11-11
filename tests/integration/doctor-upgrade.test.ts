@@ -10,7 +10,7 @@ import { createDatabase } from "@/db/connection";
 import { appointments, bookingRequests } from "@/db/schema/booking";
 import { createContactProtection } from "@/modules/booking/contact-protection";
 
-it("upgrades existing confirmed/cancelled history through 0006 without changing contacts, receipts or overlap protection", async () => {
+it("upgrades existing confirmed/cancelled history through 0007 without changing contacts, receipts or overlap protection", async () => {
   const url = new URL(inject("databaseUrl")), client = new Client({ connectionString: url.toString() });
   try { await client.connect(); await client.query("CREATE DATABASE doctor_upgrade_test"); } finally { await client.end(); }
   url.pathname = "/doctor_upgrade_test";
@@ -43,7 +43,7 @@ it("upgrades existing confirmed/cancelled history through 0006 without changing 
     const [upgraded] = await database.db.select().from(appointments).where(eq(appointments.id, id));
     expect(upgraded).toMatchObject({ status: "confirmed", reservationId: reservation, contactCiphertext: encrypted, cancelledByStaffId: null, cancelledAt: null, cancellationReason: null, rebookingInstruction: null, originalTimeBlocked: false });
     expect(protection.decrypt(id, upgraded.contactCiphertext)).toEqual(contact);
-    expect((await database.db.select().from(appointments).where(eq(appointments.id, cancelled)))[0]).toMatchObject({ status: "cancelled", reservationId: null, cancelledByStaffId: null });
+    expect((await database.db.select().from(appointments).where(eq(appointments.id, cancelled)))[0]).toMatchObject({ status: "cancelled", reservationId: null, cancelledByStaffId: null, patientCancelledAt: null, patientCancellationLate: null });
     expect((await database.db.select().from(bookingRequests))[0].receipt).toEqual(receipt);
     expect((await database.db.execute(sql`select conname from pg_constraint where conname = 'reservation_no_overlap'`)).rows).toHaveLength(1);
     await expect(database.pool.query("INSERT INTO reservations (doctor_id,kind,starts_at,ends_at) VALUES (1,'block','2026-12-01T09:05Z','2026-12-01T09:15Z')")).rejects.toMatchObject({ code: "23P01" });

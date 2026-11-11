@@ -35,3 +35,5 @@ Migration `0004_shared_booking.sql` adds booking records and preserves the exist
 Statuses: **confirmed, cancelled, completed, no_show**. Collect patient email for automatic notices; keep clinical records out of scope. Patient accounts are separate from admin/staff access. Local test code `0000` is configuration-gated, never a stored production PIN.
 
 Before launch, test account ownership, both login flows, permissions, concurrent bookings, notice retries and migration replay against real PostgreSQL. Agree on retention and verify backup restoration. See [ARCHITECTURE.md](ARCHITECTURE.md).
+
+Migration `0007` adds nullable patient cancellation timestamp/late classification, saved atomically with release and audit. Less than two hours is late; exactly two hours is on time. Existing history is not backfilled. A consistency constraint enforces paired values, patient ownership, cancelled status and the two-hour boundary; the occupancy exclusion constraint is unchanged.

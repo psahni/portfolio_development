@@ -90,6 +90,7 @@ test("mobile keyboard booking preserves the destination, registers a patient and
   expect(await counts()).toEqual({ appointments: 0, reservations: 0, audit: 0, receipts: 0 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).toContainText("less than 2 hours’ notice is recorded as a late cancellation");
   await page.screenshot({ path: testInfo.outputPath("mobile-booking-review.png") });
   const confirm = page.getByRole("button", { name: "Confirm booking", exact: true }); await confirm.focus(); await confirm.press("Enter");
   await expect(page.getByRole("heading", { name: "Appointment confirmed", exact: true })).toBeFocused();

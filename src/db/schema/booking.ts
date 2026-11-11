@@ -21,6 +21,8 @@ export const appointments = pgTable("appointments", {
   durationMinutes: integer("duration_minutes").notNull(),
   bufferBeforeMinutes: integer("buffer_before_minutes").notNull(),
   bufferAfterMinutes: integer("buffer_after_minutes").notNull(),
+  patientCancelledAt: timestamp("patient_cancelled_at", { withTimezone: true }),
+  patientCancellationLate: boolean("patient_cancellation_late"),
   cancelledByStaffId: text("cancelled_by_staff_id").references(() => staffUser.id),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   cancellationReason: text("cancellation_reason"),
@@ -35,6 +37,7 @@ export const appointments = pgTable("appointments", {
   check("appointment_duration", sql`${table.durationMinutes} between 5 and 240 and ${table.endsAt} = ${table.startsAt} + ${table.durationMinutes} * interval '1 minute'`),
   check("appointment_buffers", sql`${table.bufferBeforeMinutes} between 0 and 120 and ${table.bufferAfterMinutes} between 0 and 120`),
   check("appointment_doctor_cancellation", sql`(${table.cancelledByStaffId} is null and ${table.cancelledAt} is null and ${table.cancellationReason} is null and ${table.rebookingInstruction} is null and ${table.originalTimeBlocked} = false) or (${table.cancelledByStaffId} is not null and ${table.status} = 'cancelled' and ${table.cancelledAt} is not null and ${table.cancellationReason} is not null and char_length(${table.cancellationReason}) between 1 and 160 and ${table.rebookingInstruction} is not null and char_length(${table.rebookingInstruction}) <= 300)`),
+  check("appointment_patient_cancellation", sql`(${table.patientCancelledAt} is null and ${table.patientCancellationLate} is null) or (${table.patientCancelledAt} is not null and ${table.patientCancellationLate} is not null and ${table.status} = 'cancelled' and ${table.patientUserId} is not null and ${table.cancelledByStaffId} is null and ${table.patientCancelledAt} < ${table.startsAt} and ${table.patientCancellationLate} = (${table.startsAt} - ${table.patientCancelledAt} < interval '2 hours'))`),
   index("appointment_doctor_start").on(table.doctorId, table.startsAt),
   index("appointment_patient_start").on(table.patientUserId, table.startsAt),
 ]);
