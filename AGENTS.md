@@ -8,6 +8,14 @@ Read [implementation plan](docs/IMPLEMENTATION_PLAN.md), [architecture](docs/ARC
 
 M1, M2.1 access checks and M2.2 shared clinic login are implemented. `/admin` opens a protected `/admin/workspace` with sign out; only required staff and patient login/logout endpoints are mounted. `/login` supports patient codes and `/appointments` shows explicitly linked bookings. Codes use explicit localhost test mode until an email provider is connected. New patients are registered automatically after code verification; no separate signup or manual patient creation is needed. `/book` provides patient slot selection, details, review and committed confirmation. Staff management and PIN-change screens remain future tasks. See the [auth revision](docs/specs/AUTH_CODE_REVISION.md). Keep essential authorization, validation, credential protection and existing login limits; advanced security hardening, including shared request-abuse infrastructure, is a separate M6 task before public launch. Use [README.md](README.md) for actual commands; dev/build use webpack for this environment.
 
+## Task handoff workflow
+
+Follow this flow before starting each new implementation slice: **reconcile merged work → update issues, commit links and labels → explain the next slice and plan → get the owner's approval before implementation.**
+
+- Verify PR merge targets and commits against local and remote `main`; do not assume a merged PR reached `main`.
+- Close completed issues only after verifying their acceptance criteria are delivered on `main`. Link the implementing PR and merge commit, record verification evidence and apply relevant labels; keep incomplete work open.
+- Explain the next focused slice, its acceptance criteria, scope and implementation/verification plan. Wait for the owner's explicit approval before implementing that slice; approval already given for the same scope remains valid.
+
 ## Confirmed direction
 
 - Build a **native MVP for one clinic, one branch and one doctor**. Multiple clinics/branches/doctors and SaaS infrastructure are deferred; no tenancy module, tenant IDs or tenant RLS.
