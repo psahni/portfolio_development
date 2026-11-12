@@ -1,14 +1,14 @@
 # Nuvortiq Smart Booking — Implementation Options
 
-**Status: patient-booking-first priority selected. ✅ Clinic settings [#6](https://github.com/psahni/portfolio_development/issues/6) and availability [#7](https://github.com/psahni/portfolio_development/issues/7) merged. Doctor calendar #20, shared booking #24 and patient sign-in/listing #10 are merged. Hosted patient booking #11 is merged into `main`; appointment management follows. Staff management follows the basic MVP. Use GitHub issues as task specs.**
+**Status: patient-booking-first priority selected. ✅ Clinic settings [#6](https://github.com/psahni/portfolio_development/issues/6) and availability [#7](https://github.com/psahni/portfolio_development/issues/7) merged. Doctor calendar #20, shared booking #24 and patient sign-in/listing #10 are merged. Hosted patient booking #11 is merged into `main`; appointment management follows. Staff management #4 is implemented on this review branch. Use GitHub issues as task specs.**
 
-**Progress:** ✅ M1 foundation, M2.1 access checks and M2.2 shared clinic login are implemented. The [auth revision](specs/AUTH_CODE_REVISION.md) records the flow and checks. Staff management, PIN-change screens and real email delivery remain pending.
+**Progress:** ✅ M1 foundation, M2.1 access checks and M2.2 shared clinic login are implemented. The [auth revision](specs/AUTH_CODE_REVISION.md) records the flow and checks. Staff management #4 is implemented on this review branch; PIN-change screens and real email delivery remain pending.
 
 Scope: **one clinic, one branch and one doctor**. Multiple clinics/branches are deferred.
 
 The MVP includes native patient booking and an admin/staff interface. PostgreSQL owns bookings; Google Calendar is an optional outbound mirror.
 
-**Current next slice:** #15 WhatsApp Phase 1 is approved before staff management: optional consent, fixed Meta test sender/recipient, transactional booking-created jobs and a separate worker. Production/dynamic recipients, webhooks, reminders and cancellation messages remain deferred. Review the whole solution after WhatsApp integration.
+**Current approved slice:** #4 admin-managed staff access: add/list staff and disable/re-enable access through the existing roles and code login. Implemented on this review branch. WhatsApp #15 Phase 1 is merged; the post-integration review is recorded in PR #36. Production/dynamic recipients, webhooks, reminders and cancellation messages remain deferred.
 
 **Delivery priority:** Complete working features one approved task at a time. Keep essential access checks, input validation and credential protection; defer sophisticated security infrastructure to the separate M6 security-hardening task.
 
