@@ -31,7 +31,7 @@ test("admin adds staff, rejects duplicate email, disables existing access and re
   await page.getByLabel("Name", { exact: true }).fill("Duplicate Receptionist");
   await page.getByLabel("Email", { exact: true }).fill(email.toUpperCase());
   await page.getByRole("button", { name: "Add staff", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("A clinic account already uses this email address.");
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("A clinic account already uses this email address.");
   await expect(member).toHaveCount(1);
 
   const staffContext = await browser.newContext({ baseURL, extraHTTPHeaders });
@@ -72,7 +72,7 @@ test("staff page handles mobile validation, pending creation, failure and retry"
   await adminLogin(page);
   await page.goto("/admin/staff");
   await page.getByRole("button", { name: "Add staff", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Enter the staff member’s name.");
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("Enter the staff member’s name.");
   await page.getByLabel("Name", { exact: true }).fill("Mobile Receptionist");
   await page.getByLabel("Email", { exact: true }).fill("staff-mobile@example.test");
   let release!: () => void;
@@ -85,7 +85,7 @@ test("staff page handles mobile validation, pending creation, failure and retry"
   await expect(page.getByRole("button", { name: "Add staff", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Refresh list" })).toBeDisabled();
   release();
-  await expect(page.getByRole("alert")).toHaveText("Staff management is temporarily unavailable. Please try again.");
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("Staff management is temporarily unavailable. Please try again.");
   await page.unroute("**/api/admin/staff");
   await page.getByRole("button", { name: "Add staff", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Staff member added");
