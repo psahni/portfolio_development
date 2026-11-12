@@ -22,6 +22,8 @@ async function login(page: Page, admin = false) {
   else { await page.getByRole("button", { name: "Send code" }).click(); await page.getByLabel("Code", { exact: true }).fill("0000"); }
   await page.getByRole("button", { name: "Sign in", exact: true }).click(); await expect(page).toHaveURL(/\/admin\/workspace$/);
   await page.getByRole("link", { name: "Book appointment navigation" }).click();
+  await expect(page).toHaveURL(/\/admin\/book$/);
+  await expect(page.getByRole("heading", { name: "Book an appointment", exact: true })).toBeVisible();
 }
 async function choose(page: Page) {
   await page.getByLabel("Appointment date", { exact: true }).fill(day());
@@ -104,9 +106,9 @@ test("slot conflicts refresh availability and discarding a selection creates not
 test("booking denies anonymous and patient access, and staff see closed dates without admin setup links", async ({ page }) => {
   await page.goto("/admin/book"); await expect(page).toHaveURL(/\/admin$/);
   expect((await page.request.get("/api/admin/booking-availability")).status()).toBe(401);
-  await seedClinic(); await login(page);
+  await seedClinic();
   await withDatabase(async (db) => { await db.query("DELETE FROM weekly_hours"); });
-  await page.reload(); await expect(page.getByRole("status")).toContainText("No appointments are available");
+  await login(page); await expect(page.getByRole("status")).toContainText("No appointments are available");
   await page.getByLabel("Appointment date", { exact: true }).fill(day()); await page.getByRole("button", { name: "Show times", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("The clinic is closed");
   await withDatabase(async (db) => { await db.query("DELETE FROM clinic_settings"); });
@@ -118,7 +120,6 @@ test("booking denies anonymous and patient access, and staff see closed dates wi
   await expect(page).toHaveURL(/\/appointments$/); await page.goto("/admin/book"); await expect(page).toHaveURL(/\/admin$/);
   expect((await page.request.get("/api/admin/booking-availability")).status()).toBe(401);
 });
-
 
 test("confirmation and agenda use the committed timezone after settings change during review", async ({ page }) => {
   await seedClinic(); await login(page); await choose(page); await review(page);
