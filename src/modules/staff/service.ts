@@ -18,7 +18,7 @@ export function createStaffService(db: ApplicationDatabase, access: AdminAccess)
       .from(staffAccess).where(eq(staffAccess.userId, principal.userId)).for("update");
     const [session] = await tx.select({ id: staffSession.id }).from(staffSession).where(and(
       eq(staffSession.id, principal.sessionId), eq(staffSession.userId, principal.userId),
-      gt(staffSession.expiresAt, sql`CURRENT_TIMESTAMP`),
+      gt(staffSession.expiresAt, sql`clock_timestamp()`),
     ));
     if (!session) throw new APIError("UNAUTHORIZED", { message: "Sign in to continue." });
     if (!admin?.active || admin.role !== "admin") throw new APIError("FORBIDDEN", { message: "Admin access is required." });

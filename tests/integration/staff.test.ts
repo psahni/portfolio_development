@@ -218,7 +218,7 @@ describe("staff endpoint authorization and validation", () => {
     } finally { await database.db.update(staffAccess).set({ active: true }).where(eq(staffAccess.userId, adminId)); }
   });
 
-  it("rechecks a revoked admin session after waiting for the edit lock", async () => {
+  it.each(["revoked", "expired"])("rechecks a %s admin session after waiting for the edit lock", async (state) => {
     const headers = sessionHeaders(await identity.staff.api.signInAdminPin({ body: { email: adminEmail, pin: "4821" }, asResponse: true }));
     const principal = await identity.access.requireAdminAccess(headers);
     const blocker = await database.pool.connect(); let pending: Promise<Response> | undefined;
@@ -229,7 +229,9 @@ describe("staff endpoint authorization and validation", () => {
         const waiting = await database.db.execute(sql`SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`);
         return Number(waiting.rows[0].count);
       }).toBeGreaterThan(0);
-      await database.db.delete(staffSession).where(and(eq(staffSession.id, principal.sessionId), eq(staffSession.userId, adminId)));
+      if (state === "revoked") await database.db.delete(staffSession).where(and(eq(staffSession.id, principal.sessionId), eq(staffSession.userId, adminId)));
+      // Expire after the waiting transaction began: CURRENT_TIMESTAMP would still be stale.
+      else await database.db.update(staffSession).set({ expiresAt: sql`clock_timestamp()` }).where(eq(staffSession.id, principal.sessionId));
       await blocker.query("COMMIT");
       expect((await pending).status).toBe(401);
       expect(await service.list(credentials.admin)).toHaveLength(1);
