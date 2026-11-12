@@ -2,18 +2,19 @@ import { config } from "dotenv";
 import { setTimeout } from "node:timers/promises";
 import { createDatabase } from "../src/db/connection";
 import { readAuthEnvironment } from "../src/platform/env";
-import { createMetaWhatsApp, readWhatsAppConfig } from "../src/modules/notifications/meta";
-import { createWhatsAppWorker } from "../src/modules/notifications/worker";
+import { createMetaWhatsApp, readWhatsAppConfig, isWhatsAppWorkerEnabled } from "../src/modules/notifications/meta";
+import { createWhatsAppDelivery } from "../src/modules/notifications/delivery";
 
 config({ path: ".env.local", quiet: true });
 async function main() {
+  if (!isWhatsAppWorkerEnabled()) { process.stdout.write("WhatsApp request delivery is selected. Worker will not send.\n"); return; }
   const settings = readWhatsAppConfig();
   if (!settings) { process.stdout.write("WhatsApp is disabled. No messages sent.\n"); return; }
   const { db, pool } = createDatabase(readAuthEnvironment().DATABASE_URL);
   let stopping = false;
   process.once("SIGINT", () => { stopping = true; });
   process.once("SIGTERM", () => { stopping = true; });
-  const worker = createWhatsAppWorker(db, createMetaWhatsApp(settings));
+  const worker = createWhatsAppDelivery(db, createMetaWhatsApp(settings));
   try {
     do {
       const worked = await worker.runOnce();

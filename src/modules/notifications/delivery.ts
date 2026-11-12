@@ -3,21 +3,22 @@ import { and, asc, eq, inArray, lte } from "drizzle-orm";
 import type { ApplicationDatabase } from "@/db/connection";
 import { appointments } from "@/db/schema/booking";
 import { whatsappAttempts, whatsappConsents, whatsappNotifications } from "@/db/schema/notifications";
+import { logWhatsAppFailure, type WhatsAppFailureLogger } from "./logging";
 import type { SendResult, WhatsAppSender } from "./meta";
 
-export function createWhatsAppWorker(db: ApplicationDatabase, sender: WhatsAppSender, clock = () => new Date()) {
-  async function runOnce(): Promise<boolean> {
+export function createWhatsAppDelivery(db: ApplicationDatabase, sender: WhatsAppSender, clock = () => new Date(), report: WhatsAppFailureLogger = logWhatsAppFailure) {
+  async function dispatch(appointmentId?: string): Promise<boolean> {
     const now = clock();
     // A crashed process may have sent successfully. Never automatically resend its job.
     await db.transaction(async (tx) => {
-      const stale = await tx.select().from(whatsappNotifications).where(and(eq(whatsappNotifications.status, "sending"), lte(whatsappNotifications.updatedAt, new Date(now.getTime() - 60_000)))).for("update", { skipLocked: true });
+      const stale = await tx.select().from(whatsappNotifications).where(and(eq(whatsappNotifications.status, "sending"), lte(whatsappNotifications.updatedAt, new Date(now.getTime() - 60_000)), appointmentId ? eq(whatsappNotifications.appointmentId, appointmentId) : undefined)).for("update", { skipLocked: true });
       for (const job of stale) {
-        await tx.update(whatsappNotifications).set({ status: "uncertain", errorCode: "WORKER_INTERRUPTED", updatedAt: now }).where(eq(whatsappNotifications.id, job.id));
-        await tx.update(whatsappAttempts).set({ status: "uncertain", errorCode: "WORKER_INTERRUPTED", finishedAt: now }).where(and(eq(whatsappAttempts.notificationId, job.id), eq(whatsappAttempts.number, job.attempts)));
+        await tx.update(whatsappNotifications).set({ status: "uncertain", errorCode: "DELIVERY_INTERRUPTED", updatedAt: now }).where(eq(whatsappNotifications.id, job.id));
+        await tx.update(whatsappAttempts).set({ status: "uncertain", errorCode: "DELIVERY_INTERRUPTED", finishedAt: now }).where(and(eq(whatsappAttempts.notificationId, job.id), eq(whatsappAttempts.number, job.attempts)));
       }
     });
     const claimed = await db.transaction(async (tx) => {
-      const [job] = await tx.select().from(whatsappNotifications).where(and(eq(whatsappNotifications.status, "pending"), lte(whatsappNotifications.availableAt, now))).orderBy(asc(whatsappNotifications.availableAt), asc(whatsappNotifications.id)).limit(1).for("update", { skipLocked: true });
+      const [job] = await tx.select().from(whatsappNotifications).where(and(eq(whatsappNotifications.status, "pending"), lte(whatsappNotifications.availableAt, now), appointmentId ? eq(whatsappNotifications.appointmentId, appointmentId) : undefined)).orderBy(asc(whatsappNotifications.availableAt), asc(whatsappNotifications.id)).limit(1).for("update", { skipLocked: true });
       if (!job) return null;
       const [consent] = await tx.select().from(whatsappConsents).where(eq(whatsappConsents.appointmentId, job.appointmentId));
       const [visit] = await tx.select({ startsAt: appointments.startsAt, timezone: appointments.timezone, status: appointments.status }).from(appointments).where(eq(appointments.id, job.appointmentId));
@@ -41,7 +42,7 @@ export function createWhatsAppWorker(db: ApplicationDatabase, sender: WhatsAppSe
       catch { result = { status: "uncertain", errorCode: "SENDER_INTERRUPTED" }; }
     }
     const finished = clock();
-    const retry = result.status === "failed" && result.retryable && claimed.number < 3;
+    const retry = !appointmentId && result.status === "failed" && result.retryable && claimed.number < 3;
     await db.transaction(async (tx) => {
       // Late results from the same attempt can reconcile an interrupted job.
       // Uncertain jobs are never reclaimed for another send.
@@ -52,7 +53,8 @@ export function createWhatsAppWorker(db: ApplicationDatabase, sender: WhatsAppSe
       if (updated.length) await tx.update(whatsappAttempts).set({ status: result.status, finishedAt: finished,
         apiMessageId: "apiMessageId" in result ? result.apiMessageId ?? null : null, errorCode: result.errorCode ?? null }).where(eq(whatsappAttempts.id, claimed.attempt.id));
     });
+    if (result.status === "failed" || result.status === "uncertain") report({ appointmentId: claimed.job.appointmentId, status: result.status, code: result.errorCode ?? "SEND_FAILED" });
     return true;
   }
-  return { runOnce };
+  return { runOnce: () => dispatch(), sendForAppointment: (appointmentId: string) => dispatch(appointmentId) };
 }

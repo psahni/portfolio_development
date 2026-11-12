@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import { SchedulingError } from "@/modules/scheduling/models";
 import type { createHostedBookingService } from "./hosted";
 import type { createBookingService } from "./service";
+import type { BookingReceipt } from "./models";
 import { BookingError } from "./models";
 
 const respond = (body: object, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store", Vary: "Cookie" } });
@@ -23,7 +24,7 @@ export function createHostedAvailabilityHandler(getService: () => ReturnType<typ
   };
 }
 
-export function createPatientBookingHandler(getService: () => ReturnType<typeof createBookingService>, getTrustedOrigin: () => string) {
+export function createPatientBookingHandler(getService: () => ReturnType<typeof createBookingService>, getTrustedOrigin: () => string, afterConfirmation: (receipt: BookingReceipt) => Promise<void> = async () => {}) {
   return async (request: Request) => {
     if (request.method !== "POST") return respond({ error: "Method not allowed." }, 405);
     try {
@@ -35,7 +36,12 @@ export function createPatientBookingHandler(getService: () => ReturnType<typeof 
         // Initialization failed before the booking service could start a transaction.
         return respond({ code: "BOOKING_NOT_READY", error: "Online booking is temporarily unavailable. Please try again or contact the clinic." }, 503);
       }
-      return respond({ receipt: await service.bookPatient(request.headers, input) });
+      const receipt = await service.bookPatient(request.headers, input);
+      // The transaction has committed. A notification failure must not turn a saved
+      // appointment into a failed response or trigger another booking attempt.
+      try { await afterConfirmation(receipt); }
+      catch { console.warn("Appointment confirmed, but its WhatsApp notification could not be sent (POST_COMMIT_FAILURE)."); }
+      return respond({ receipt });
     } catch (error) { return failure(error); }
   };
 }

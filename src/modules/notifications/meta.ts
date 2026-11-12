@@ -23,7 +23,13 @@ export function readWhatsAppConfig(source: Record<string, string | undefined> = 
 export type SendResult = { status: "accepted" | "failed" | "uncertain"; apiMessageId?: string; errorCode?: string; retryable?: boolean };
 export type WhatsAppSender = { send(visit: { startsAt: Date; timezone: string }): Promise<SendResult> };
 
-export function createMetaWhatsApp(config: MetaConfig, request: typeof fetch = fetch): WhatsAppSender {
+export function isWhatsAppWorkerEnabled(source: Record<string, string | undefined> = process.env): boolean {
+  const flag = source.WHATSAPP_USE_WORKER ?? "true";
+  if (flag !== "true" && flag !== "false") throw new Error("WHATSAPP_USE_WORKER must be true or false.");
+  return flag === "true";
+}
+
+export function createMetaWhatsApp(config: MetaConfig, request: typeof fetch = fetch, timeoutMs = 15_000): WhatsAppSender {
   return { async send(visit) {
     const template: { name: string; language: { code: string }; components?: object[] } = { name: config.WHATSAPP_TEMPLATE_NAME, language: { code: config.WHATSAPP_TEMPLATE_LANGUAGE } };
     if (config.WHATSAPP_TEMPLATE_MODE === "appointment") template.components = [{ type: "body", parameters: [
@@ -32,7 +38,7 @@ export function createMetaWhatsApp(config: MetaConfig, request: typeof fetch = f
     ] }];
     try {
       const response = await request(`https://graph.facebook.com/${config.WHATSAPP_API_VERSION}/${config.WHATSAPP_TEST_PHONE_NUMBER_ID}/messages`, {
-        method: "POST", redirect: "error", signal: AbortSignal.timeout(15_000),
+        method: "POST", redirect: "error", signal: AbortSignal.timeout(timeoutMs),
         headers: { Authorization: `Bearer ${config.WHATSAPP_ACCESS_TOKEN}`, "Content-Type": "application/json" },
         body: JSON.stringify({ messaging_product: "whatsapp", to: config.WHATSAPP_TEST_RECIPIENT.slice(1), type: "template", template }),
       });

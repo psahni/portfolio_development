@@ -1,6 +1,8 @@
 import { whatsappAttempts, whatsappConsents, whatsappNotifications } from "@/db/schema/notifications";
 import { whatsappBookingEvents } from "@/modules/notifications/booking-events";
-import { createWhatsAppWorker } from "@/modules/notifications/worker";
+import { createPostBookingWhatsApp } from "@/modules/notifications/post-booking";
+import type { SendResult } from "@/modules/notifications/meta";
+import { createWhatsAppDelivery } from "@/modules/notifications/delivery";
 import { createWhatsAppConsentHandler } from "@/modules/notifications/consent";
 import { vi } from "vitest";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -993,6 +995,94 @@ describe("WhatsApp Phase 1", () => {
   const withdrawalHandler = () => createWhatsAppConsentHandler(database.db, identity.patientAccess, () => baseURL);
   const jobs = () => database.db.select().from(whatsappNotifications);
   const attempts = () => database.db.select().from(whatsappAttempts);
+  const directEnv = { WHATSAPP_ENABLED: "true", WHATSAPP_USE_WORKER: "false", WHATSAPP_ACCESS_TOKEN: "synthetic-token", WHATSAPP_API_VERSION: "v25.0", WHATSAPP_TEST_PHONE_NUMBER_ID: "123456", WHATSAPP_TEST_RECIPIENT: "+919876543210", WHATSAPP_TEMPLATE_NAME: "hello_world", WHATSAPP_TEMPLATE_LANGUAGE: "en_US" };
+  it("sends the committed request appointment only, once across concurrent request and worker dispatch", async () => {
+    await enabledService().bookPatient(credentials.other, { ...input(`${date}T09:20:00Z`), whatsappConsent: true });
+    const report = vi.fn();
+    const send = vi.fn(async (): Promise<SendResult> => {
+      expect(await counts()).toEqual([2, 2, 2, 2]);
+      return { status: "accepted", apiMessageId: "wamid.request" };
+    });
+    const after = createPostBookingWhatsApp(() => database.db, directEnv, () => ({ send }), report, clock);
+    const handler = createPatientBookingHandler(enabledService, () => baseURL, after);
+    const value = { ...input(), whatsappConsent: true };
+    const first = await handler(httpRequest("bookings", "patient", value));
+    expect(first.status).toBe(200); const { receipt } = await first.json();
+    expect(send).toHaveBeenCalledTimes(1); expect(report).not.toHaveBeenCalled();
+    const selected = (await jobs()).find((j) => j.appointmentId === receipt.id)!;
+    expect(selected).toMatchObject({ status: "accepted", attempts: 1, apiMessageId: "wamid.request" });
+    expect((await jobs()).find((j) => j.appointmentId !== receipt.id)).toMatchObject({ status: "pending", attempts: 0 });
+    await Promise.all([handler(httpRequest("bookings", "patient", value)), handler(httpRequest("bookings", "patient", value)), createWhatsAppDelivery(database.db, { send }, clock, report).sendForAppointment(receipt.id)]);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+  it("shares the active send claim across the request, its retry and a worker", async () => {
+    let started!: () => void, release!: () => void;
+    const sending = new Promise<void>((resolve) => { started = resolve; });
+    const finish = new Promise<void>((resolve) => { release = resolve; });
+    const send = vi.fn(async (): Promise<SendResult> => { started(); await finish; return { status: "accepted", apiMessageId: "wamid.concurrent" }; });
+    const report = vi.fn();
+    const after = createPostBookingWhatsApp(() => database.db, directEnv, () => ({ send }), report, clock);
+    const handler = createPatientBookingHandler(enabledService, () => baseURL, after), value = { ...input(), whatsappConsent: true };
+    const first = handler(httpRequest("bookings", "patient", value));
+    try {
+      await sending;
+      expect((await handler(httpRequest("bookings", "patient", value))).status).toBe(200);
+      expect(await createWhatsAppDelivery(database.db, { send }, clock, report).runOnce()).toBe(false);
+      expect(send).toHaveBeenCalledTimes(1);
+    } finally { release(); }
+    expect((await first).status).toBe(200);
+    expect((await attempts())[0]).toMatchObject({ status: "accepted", number: 1 });
+  });
+  it("returns success after an accepted send even when result persistence fails", async () => {
+    await database.db.execute(sql`CREATE FUNCTION reject_whatsapp_result() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status = 'accepted' THEN RAISE EXCEPTION 'private result failure'; END IF; RETURN NEW; END $$`);
+    await database.db.execute(sql`CREATE TRIGGER reject_whatsapp_result BEFORE UPDATE ON whatsapp_notifications FOR EACH ROW EXECUTE FUNCTION reject_whatsapp_result()`);
+    const send = vi.fn(async (): Promise<SendResult> => ({ status: "accepted", apiMessageId: "wamid.unpersisted" })), report = vi.fn();
+    const after = createPostBookingWhatsApp(() => database.db, directEnv, () => ({ send }), report, clock);
+    const handler = createPatientBookingHandler(enabledService, () => baseURL, after), value = { ...input(), whatsappConsent: true };
+    try {
+      const response = await handler(httpRequest("bookings", "patient", value));
+      expect(response.status).toBe(200); expect((await response.json()).receipt.status).toBe("confirmed");
+      expect((await jobs())[0]).toMatchObject({ status: "sending", attempts: 1 });
+      expect(report).toHaveBeenCalledWith(expect.objectContaining({ code: "REQUEST_DELIVERY_FAILED" }));
+      expect(JSON.stringify(report.mock.calls)).not.toContain("private result failure");
+      expect((await handler(httpRequest("bookings", "patient", value))).status).toBe(200);
+      expect(send).toHaveBeenCalledTimes(1);
+    } finally {
+      await database.db.execute(sql`DROP TRIGGER reject_whatsapp_result ON whatsapp_notifications`);
+      await database.db.execute(sql`DROP FUNCTION reject_whatsapp_result()`);
+    }
+  });
+  it.each(["failed", "uncertain", "throw"])("keeps booking successful when direct delivery is %s", async (outcome) => {
+    const report = vi.fn();
+    const send = vi.fn(async (): Promise<SendResult> => {
+      if (outcome === "throw") throw new Error("private provider token");
+      return outcome === "failed" ? { status: "failed", errorCode: "META_130429", retryable: true } : { status: "uncertain", errorCode: "NETWORK_OR_TIMEOUT" };
+    });
+    const after = createPostBookingWhatsApp(() => database.db, directEnv, () => ({ send }), report, clock);
+    const handler = createPatientBookingHandler(enabledService, () => baseURL, after), value = { ...input(), whatsappConsent: true };
+    const response = await handler(httpRequest("bookings", "patient", value));
+    expect(response.status).toBe(200); expect((await response.json()).receipt.status).toBe("confirmed");
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+    expect((await jobs())[0]).toMatchObject({ status: outcome === "failed" ? "failed" : "uncertain", attempts: 1 });
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({ status: outcome === "failed" ? "failed" : "uncertain" }));
+    expect(JSON.stringify(report.mock.calls)).not.toContain("private provider token");
+    expect((await handler(httpRequest("bookings", "patient", value))).status).toBe(200);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+  it("preserves a booked receipt on notification database failure and skips failed/no-consent bookings", async () => {
+    const report = vi.fn(), send = vi.fn(async (): Promise<SendResult> => ({ status: "accepted", apiMessageId: "wamid.request" }));
+    const failedDb = createPostBookingWhatsApp(() => { throw new Error("private database secret"); }, directEnv, () => ({ send }), report, clock);
+    const handler = createPatientBookingHandler(enabledService, () => baseURL, failedDb);
+    const response = await handler(httpRequest("bookings", "patient", { ...input(), whatsappConsent: true }));
+    expect(response.status).toBe(200); expect((await response.json()).receipt.status).toBe("confirmed");
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({ code: "REQUEST_DELIVERY_FAILED" }));
+    expect(send).not.toHaveBeenCalled(); expect(JSON.stringify(report.mock.calls)).not.toContain("private database secret");
+    const after = createPostBookingWhatsApp(() => database.db, directEnv, () => ({ send }), report, clock);
+    const directHandler = createPatientBookingHandler(enabledService, () => baseURL, after);
+    expect((await directHandler(httpRequest("bookings", "other", input(`${date}T09:20:00Z`)))).status).toBe(200);
+    expect((await directHandler(httpRequest("bookings", "other", { ...input(`${date}T22:00:00Z`), whatsappConsent: true }))).status).toBe(409);
+    expect(send).not.toHaveBeenCalled();
+  });
   it("stores both consent choices, queues only opt-in and preserves consent on receipt replay", async () => {
     const booking = enabledService(), value = { ...input(), whatsappConsent: true };
     const results = await Promise.all([booking.bookPatient(credentials.patient, value), booking.bookPatient(credentials.patient, value)]);
@@ -1036,11 +1126,11 @@ describe("WhatsApp Phase 1", () => {
       expect(await database.db.select().from(appointments).where(eq(appointments.id, receipt.id))).toHaveLength(1);
       return { status: "accepted" as const, apiMessageId: "wamid.synthetic" };
     });
-    await Promise.all([createWhatsAppWorker(database.db, { send }, clock).runOnce(), createWhatsAppWorker(database.db, { send }, clock).runOnce()]);
+    await Promise.all([createWhatsAppDelivery(database.db, { send }, clock).runOnce(), createWhatsAppDelivery(database.db, { send }, clock).runOnce()]);
     expect(send).toHaveBeenCalledTimes(1);
     expect((await jobs())[0]).toMatchObject({ status: "accepted", attempts: 1, apiMessageId: "wamid.synthetic", errorCode: null });
     expect((await attempts())[0]).toMatchObject({ status: "accepted", number: 1, apiMessageId: "wamid.synthetic", finishedAt: now });
-    expect(await createWhatsAppWorker(database.db, { send }, clock).runOnce()).toBe(false);
+    expect(await createWhatsAppDelivery(database.db, { send }, clock).runOnce()).toBe(false);
   });
   it("withdraws only owned consent, preserves timestamps on retry and suppresses queued work", async () => {
     const booking = enabledService(), value = { ...input(), whatsappConsent: true };
@@ -1059,7 +1149,7 @@ describe("WhatsApp Phase 1", () => {
     await booking.bookPatient(credentials.patient, value);
     expect((await database.db.select().from(whatsappConsents))[0]).toEqual(consent);
     expect((await createPatientAppointmentsService(database.db, identity.patientAccess).list(credentials.patient))[0].whatsappConsentActive).toBe(false);
-    const send = vi.fn(); await createWhatsAppWorker(database.db, { send }, clock).runOnce();
+    const send = vi.fn(); await createWhatsAppDelivery(database.db, { send }, clock).runOnce();
     expect(send).not.toHaveBeenCalled(); expect((await jobs())[0].status).toBe("suppressed");
   });
   it.each(["cancelled", "past", "withdrawn"])("suppresses %s notifications at dispatch", async (reason) => {
@@ -1067,13 +1157,13 @@ describe("WhatsApp Phase 1", () => {
     if (reason === "cancelled") await cancellationService().cancel(credentials.patient, { appointmentId: receipt.id });
     if (reason === "past") now = new Date(receipt.startsAt);
     if (reason === "withdrawn") await database.db.update(whatsappConsents).set({ withdrawn: true, withdrawnAt: now });
-    const send = vi.fn(); await createWhatsAppWorker(database.db, { send }, clock).runOnce();
+    const send = vi.fn(); await createWhatsAppDelivery(database.db, { send }, clock).runOnce();
     expect(send).not.toHaveBeenCalled(); expect((await jobs())[0]).toMatchObject({ status: "suppressed", attempts: 0 });
   });
   it("bounds definite rate-limit retries and logs each attempt", async () => {
     await enabledService().bookPatient(credentials.patient, { ...input(), whatsappConsent: true });
     const send = vi.fn(async () => ({ status: "failed" as const, errorCode: "META_130429", retryable: true }));
-    const worker = createWhatsAppWorker(database.db, { send }, clock);
+    const worker = createWhatsAppDelivery(database.db, { send }, clock);
     for (let i = 1; i <= 3; i++) {
       await worker.runOnce();
       expect((await jobs())[0]).toMatchObject({ attempts: i, status: i < 3 ? "pending" : "failed" });
@@ -1085,7 +1175,7 @@ describe("WhatsApp Phase 1", () => {
   it("records uncertain outcomes and never retries them automatically", async () => {
     await enabledService().bookPatient(credentials.patient, { ...input(), whatsappConsent: true });
     const send = vi.fn(async () => { throw new Error("private access token"); });
-    const worker = createWhatsAppWorker(database.db, { send }, clock);
+    const worker = createWhatsAppDelivery(database.db, { send }, clock);
     await worker.runOnce(); expect(await worker.runOnce()).toBe(false);
     expect(send).toHaveBeenCalledTimes(1);
     expect((await jobs())[0]).toMatchObject({ status: "uncertain", errorCode: "SENDER_INTERRUPTED" });
@@ -1096,12 +1186,12 @@ describe("WhatsApp Phase 1", () => {
     const send = vi.fn(async () => {
       now = new Date(now.getTime() + 61_000);
       const otherSend = vi.fn();
-      expect(await createWhatsAppWorker(database.db, { send: otherSend }, clock).runOnce()).toBe(false);
+      expect(await createWhatsAppDelivery(database.db, { send: otherSend }, clock).runOnce()).toBe(false);
       expect(otherSend).not.toHaveBeenCalled();
       expect((await jobs())[0].status).toBe("uncertain");
       return { status: "accepted" as const, apiMessageId: "wamid.late" };
     });
-    await createWhatsAppWorker(database.db, { send }, clock).runOnce();
+    await createWhatsAppDelivery(database.db, { send }, clock).runOnce();
     expect(send).toHaveBeenCalledTimes(1);
     expect((await jobs())[0]).toMatchObject({ status: "accepted", attempts: 1, apiMessageId: "wamid.late" });
     expect((await attempts())[0]).toMatchObject({ status: "accepted", apiMessageId: "wamid.late" });
@@ -1117,9 +1207,9 @@ describe("WhatsApp Phase 1", () => {
     const [job] = await jobs();
     await database.db.update(whatsappNotifications).set({ status: "sending", attempts: 1, updatedAt: new Date(now.getTime() - 60_001) });
     await database.db.insert(whatsappAttempts).values({ notificationId: job.id, number: 1, status: "sending", startedAt: new Date(now.getTime() - 60_001) });
-    const send = vi.fn(); await createWhatsAppWorker(database.db, { send }, clock).runOnce();
+    const send = vi.fn(); await createWhatsAppDelivery(database.db, { send }, clock).runOnce();
     expect(send).not.toHaveBeenCalled();
-    expect((await jobs())[0]).toMatchObject({ status: "uncertain", errorCode: "WORKER_INTERRUPTED" });
-    expect((await attempts())[0]).toMatchObject({ status: "uncertain", errorCode: "WORKER_INTERRUPTED" });
+    expect((await jobs())[0]).toMatchObject({ status: "uncertain", errorCode: "DELIVERY_INTERRUPTED" });
+    expect((await attempts())[0]).toMatchObject({ status: "uncertain", errorCode: "DELIVERY_INTERRUPTED" });
   });
 });
