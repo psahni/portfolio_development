@@ -650,6 +650,59 @@ describe("hosted patient booking HTTP", () => {
     expect(response.status).toBe(200);
     return (await response.json()).availability;
   };
+  const selectedDay = async (day = date) => {
+    const response = await availabilityHandler()(httpRequest(`availability?date=${day}`));
+    expect(response.status).toBe(200);
+    return (await response.json()).availability;
+  };
+  it("retains booked candidates without exposing another patient's data and releases cancellations on refresh", async () => {
+    const booked = await service.bookPatient(credentials.other, input());
+    await schedule.addBreak(credentials.admin, { date, start: "09:20", end: "09:40", reason: "private break" });
+    const before = await counts(), view = await selectedDay();
+    expect(view.slots).toHaveLength(8);
+    expect(view.slots[0]).toEqual({ startsAt: `${date}T09:00:00.000Z`, endsAt: `${date}T09:20:00.000Z`, label: "9:00 AM – 9:20 AM", availability: "unavailable" });
+    expect(view.slots[1].startsAt).toBe(`${date}T09:40:00.000Z`);
+    for (const slot of view.slots) expect(Object.keys(slot).sort()).toEqual(["availability", "endsAt", "label", "startsAt"]);
+    for (const secret of [booked.id, otherPatientId, "Synthetic Patient", "98765", "other@example.test", "private break", "reservationId", "occupiedStart"]) expect(JSON.stringify(view)).not.toContain(secret);
+    expect(await counts()).toEqual(before);
+    expect((await bookingHandler()(httpRequest("bookings", "patient", input()))).status).toBe(409);
+    await cancellationService().cancel(credentials.other, { appointmentId: booked.id });
+    expect((await selectedDay()).slots[0].availability).toBe("available");
+  });
+  it("skips fully booked default dates but retains unavailable candidates on explicit selection", async () => {
+    await clinic.save(credentials.admin, { ...configuration(), durationMinutes: 180, bookingHorizonDays: 1 });
+    now = new Date("2026-11-09T10:00Z");
+    await service.bookForClinic(credentials.admin, clinicInput(`${date}T09:00:00Z`));
+    // Today is elapsed; tomorrow's sole candidate is occupied.
+    expect(await defaultDay()).toMatchObject({ date: "2026-11-09", slots: [], noAvailableDates: true });
+    const explicit = await selectedDay();
+    expect(explicit).toMatchObject({ date, noAvailableDates: false, closed: false });
+    expect(explicit.slots.map((slot: { availability: string }) => slot.availability)).toEqual(["unavailable"]);
+    await clinic.save(credentials.admin, { ...configuration(), durationMinutes: 180, bookingHorizonDays: 2 });
+    expect(await defaultDay()).toMatchObject({ date: "2026-11-11", noAvailableDates: false });
+  });
+  it("uses saved appointment buffers against changed grid rules and retains special hours", async () => {
+    await clinic.save(credentials.admin, { ...configuration(), bufferBeforeMinutes: 5, bufferAfterMinutes: 5 });
+    await service.bookForClinic(credentials.admin, clinicInput(`${date}T09:05:00Z`));
+    await clinic.save(credentials.admin, configuration());
+    await schedule.saveOverride(credentials.admin, { date, mode: "custom", intervals: [{ start: "09:00", end: "10:00" }] });
+    expect((await selectedDay()).slots.map((slot: { availability: string }) => slot.availability)).toEqual(["unavailable", "unavailable", "available"]);
+    await schedule.addBreak(credentials.admin, { date, start: "09:40", end: "10:00" });
+    expect((await selectedDay()).slots).toHaveLength(2);
+  });
+  it.each(["2026-03-08", "2026-11-01"])("refreshes occupied and cancelled candidates across DST on %s", async (day) => {
+    now = new Date(`${day}T00:00Z`);
+    const config = { ...configuration(), timezone: "America/New_York", bufferBeforeMinutes: 5, bufferAfterMinutes: 5 };
+    config.weeklyHours.forEach((entry) => { entry.intervals = [{ start: "00:00", end: "05:00" }]; });
+    await clinic.save(credentials.admin, config);
+    const free = await selectedDay(day), chosen = free.slots.at(-1);
+    const booked = await service.bookPatient(credentials.other, input(chosen.startsAt));
+    const occupied = await selectedDay(day);
+    expect(occupied.slots).toHaveLength(free.slots.length);
+    expect(occupied.slots.at(-1)).toEqual({ ...chosen, availability: "unavailable" });
+    await cancellationService().cancel(credentials.other, { appointmentId: booked.id });
+    expect((await selectedDay(day)).slots).toEqual(free.slots);
+  });
   it("keeps today selected when it still has bookable slots", async () => {
     const view = await defaultDay();
     expect(view).toMatchObject({ today: "2026-11-09", date: "2026-11-09", noAvailableDates: false });
@@ -707,7 +760,7 @@ describe("hosted patient booking HTTP", () => {
     config.weeklyHours.forEach((entry) => { entry.intervals = [{ start: "00:00", end: "05:00" }]; });
     await clinic.save(credentials.admin, config);
     const view = await defaultDay(); expect(view.date).toBe(day);
-    expect(view.slots).toEqual((await schedule.preview(credentials.admin, day)).slots.map(({ startsAt, endsAt, label }) => ({ startsAt, endsAt, label })));
+    expect(view.slots).toEqual((await schedule.preview(credentials.admin, day)).slots.map(({ startsAt, endsAt, label }) => ({ startsAt, endsAt, label, availability: "available" })));
     expect(await counts()).toEqual([0, 0, 0, 0]);
   });
   it("distinguishes missing-key setup failure before a booking attempt and permits recovery", async () => {
@@ -740,7 +793,7 @@ describe("hosted patient booking HTTP", () => {
     const data = await response.json();
     expect(data.email).toBe(adminEmail);
     expect(data.availability).toMatchObject({ clinicName: "Booking Test", doctorName: "Synthetic Doctor", timezone: "UTC", date });
-    expect(data.availability.slots).toEqual((await schedule.preview(credentials.admin, date)).slots.map(({ startsAt, endsAt, label }) => ({ startsAt, endsAt, label })));
+    expect(data.availability.slots).toEqual((await schedule.preview(credentials.admin, date)).slots.map(({ startsAt, endsAt, label }) => ({ startsAt, endsAt, label, availability: "available" })));
     for (const secret of ["private staff note", "internal override note", "occupiedStart", "blocks", "override", "patientUserId", patientId, "session", "token"]) expect(JSON.stringify(data)).not.toContain(secret);
     expect(await counts()).toEqual([0, 1, 0, 0]);
   });
@@ -797,14 +850,14 @@ describe("hosted patient booking HTTP", () => {
     expect((await bookingHandler()(httpRequest("bookings", "patient", value))).status).toBe(409);
     expect(await counts()).toEqual([1, 1, 1, 1]);
   });
-  it("competes with receptionist booking under the shared lock and refreshes only free times", async () => {
+  it("competes with receptionist booking under the shared lock and refreshes occupied times", async () => {
     const results = await Promise.allSettled([bookingHandler()(httpRequest("bookings", "patient", input())), service.bookForClinic(credentials.staff, clinicInput())]);
     const patient = results[0]; expect(patient.status).toBe("fulfilled");
     if (patient.status !== "fulfilled") return;
     if (patient.value.status === 200) expect(results[1].status).toBe("rejected");
     else { expect(patient.value.status).toBe(409); expect(await patient.value.json()).toMatchObject({ code: "SLOT_UNAVAILABLE" }); expect(results[1].status).toBe("fulfilled"); }
     const { availability } = await (await availabilityHandler()(httpRequest(`availability?date=${date}`))).json();
-    expect(availability.slots.some((slot: { startsAt: string }) => slot.startsAt === `${date}T09:00:00.000Z`)).toBe(false);
+    expect(availability.slots.find((slot: { startsAt: string }) => slot.startsAt === `${date}T09:00:00.000Z`)).toMatchObject({ availability: "unavailable" });
     expect(await counts()).toEqual([1, 1, 1, 1]);
   });
   it("reports closed dates, booking-window validation and an unconfigured clinic safely", async () => {
@@ -822,7 +875,7 @@ describe("hosted patient booking HTTP", () => {
     config.weeklyHours.forEach((entry) => { entry.intervals = [{ start: "00:00", end: "05:00" }]; });
     await clinic.save(credentials.admin, config);
     const { availability } = await (await availabilityHandler()(httpRequest(`availability?date=${day}`))).json();
-    expect(availability.slots).toEqual((await schedule.preview(credentials.admin, day)).slots.map(({ startsAt, endsAt, label }) => ({ startsAt, endsAt, label })));
+    expect(availability.slots).toEqual((await schedule.preview(credentials.admin, day)).slots.map(({ startsAt, endsAt, label }) => ({ startsAt, endsAt, label, availability: "available" })));
     const chosen = availability.slots.at(-1);
     const response = await bookingHandler()(httpRequest("bookings", "patient", input(chosen.startsAt)));
     expect(response.status).toBe(200); expect((await response.json()).receipt.endsAt).toBe(chosen.endsAt);

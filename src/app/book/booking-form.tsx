@@ -50,7 +50,7 @@ export function BookingForm({ initial }: { initial: View }) {
     finally { setPending(null); }
   }
   function choose(slot: Slot) {
-    if (locked) return;
+    if (locked || slot.availability !== "available") return;
     submission.current = null; setReturningToDetails(false); setSelected(slot); setStep("details"); setError("");
   }
   function review(event: FormEvent<HTMLFormElement>) {
@@ -103,8 +103,10 @@ export function BookingForm({ initial }: { initial: View }) {
       {timesError && <p role="alert" className="mt-4 text-sm text-red-800">{timesError}</p>}
       {availability.noAvailableDates ? <p role="status" className="ui-hint mt-5 rounded-lg bg-muted p-4">No appointments are available within the booking window. Please check again later or contact the clinic.</p> : date !== availability.date ? <p className="ui-hint mt-5">Select Show times to load this date.</p> : <>
         <h3 className="mt-6 text-sm font-medium">{dateLabel(availability.date)}</h3>
-        {availability.slots.length ? <div aria-label="Available times" className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {availability.slots.map((slot) => <button key={slot.startsAt} type="button" disabled={locked} aria-pressed={selected?.startsAt === slot.startsAt} onClick={() => choose(slot)} className="min-h-11 rounded-lg border bg-card px-3 py-3 text-sm transition-colors hover:border-primary hover:bg-available focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 aria-pressed:border-primary aria-pressed:bg-available aria-pressed:text-primary">{slot.label}</button>)}
+        {availability.slots.some((slot) => slot.availability === "unavailable") && <p id="unavailable-times-help" className="ui-hint mt-3">Unavailable times cannot be booked, including time needed between appointments.</p>}
+        {availability.slots.length > 0 && availability.slots.every((slot) => slot.availability === "unavailable") && <p role="status" className="ui-hint mt-4 rounded-lg bg-muted p-4">No free times on this date. Please choose another day or contact the clinic.</p>}
+        {availability.slots.length ? <div role="group" aria-label="Appointment times" className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {availability.slots.map((slot) => <button key={slot.startsAt} type="button" disabled={locked} aria-disabled={slot.availability === "unavailable"} aria-describedby={slot.availability === "unavailable" ? "unavailable-times-help" : undefined} aria-pressed={selected?.startsAt === slot.startsAt} onClick={() => choose(slot)} className="min-h-11 rounded-lg border bg-card px-3 py-3 text-sm transition-colors enabled:aria-[disabled=false]:hover:border-primary enabled:aria-[disabled=false]:hover:bg-available focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:bg-muted aria-disabled:text-muted-foreground aria-pressed:border-primary aria-pressed:bg-available aria-pressed:text-primary">{slot.label}{slot.availability === "unavailable" && <span className="mt-1 block text-xs font-medium">Unavailable</span>}</button>)}
         </div> : <p role="status" className="ui-hint mt-4 rounded-lg bg-muted p-4">{availability.closed ? "The clinic is closed on this date. Please choose another day." : "No times available for this date. Please choose another day."}</p>}
       </>}
     </section>

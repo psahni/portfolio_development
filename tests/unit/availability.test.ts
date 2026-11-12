@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyConfiguration, type ClinicConfiguration } from "@/modules/clinic/configuration";
-import { addDays, clinicDate, dayBounds, generateSlots, localInstant, occupancyFits } from "@/modules/scheduling/engine";
+import { addDays, clinicDate, dayBounds, generateSlotChoices, generateSlots, localInstant, occupancyFits } from "@/modules/scheduling/engine";
 import { breakSchema, dateSchema, overrideSchema, type DateOverride, type Occupancy } from "@/modules/scheduling/models";
 
 const date = "2026-11-09", now = new Date("2026-11-09T08:00:00Z");
@@ -132,5 +132,51 @@ describe("date override and break validation", () => {
   it("rejects reversed/overnight breaks and excessive notes", () => {
     expect(breakSchema.safeParse({ date, start: "14:00", end: "13:00" }).success).toBe(false);
     expect(breakSchema.safeParse({ date, start: "09:00", end: "10:00", reason: "x".repeat(161) }).success).toBe(false);
+  });
+});
+
+
+describe("patient slot grid", () => {
+  it("keeps occupied candidates chronological, exposes only generic state and omits breaks", () => {
+    const occupied = [occupancy(`${date}T09:20Z`, `${date}T09:40Z`, "appointment"), occupancy(`${date}T10:00Z`, `${date}T10:20Z`)];
+    const grid = generateSlotChoices(config(), date, null, occupied, now);
+    expect(grid).toHaveLength(8);
+    expect(grid.slice(0, 3)).toEqual([
+      { startsAt: `${date}T09:00:00.000Z`, endsAt: `${date}T09:20:00.000Z`, label: "9:00 AM – 9:20 AM", availability: "available" },
+      { startsAt: `${date}T09:20:00.000Z`, endsAt: `${date}T09:40:00.000Z`, label: "9:20 AM – 9:40 AM", availability: "unavailable" },
+      { startsAt: `${date}T09:40:00.000Z`, endsAt: `${date}T10:00:00.000Z`, label: "9:40 AM – 10:00 AM", availability: "available" },
+    ]);
+    expect(grid.filter((slot) => slot.availability === "available").map((slot) => slot.startsAt)).toEqual(generateSlots(config(), date, null, occupied, now).map((slot) => slot.startsAt));
+  });
+  it("marks saved or candidate buffer conflicts unavailable and gives breaks precedence", () => {
+    const value = config(); value.bufferBeforeMinutes = 5; value.bufferAfterMinutes = 5;
+    const occupied = [occupancy(`${date}T09:25Z`, `${date}T09:35Z`, "appointment")];
+    const grid = generateSlotChoices(value, date, null, occupied, now);
+    expect(grid.slice(0, 3).map((slot) => slot.availability)).toEqual(["unavailable", "unavailable", "available"]);
+    const withBreak = generateSlotChoices(value, date, null, [...occupied, occupancy(`${date}T09:35Z`, `${date}T09:40Z`)], now);
+    expect(withBreak.some((slot) => slot.label.startsWith("9:35"))).toBe(false);
+    expect(withBreak[0].availability).toBe("unavailable");
+  });
+  it("retains closures, special hours, lead time and exact horizon restrictions", () => {
+    const value = config(); value.bookingHorizonDays = 1;
+    const occupied = [occupancy(`${date}T00:00Z`, "2026-11-11T00:00Z", "appointment")];
+    expect(generateSlotChoices(value, date, { mode: "closed", intervals: [], reason: "private" }, occupied, now)).toEqual([]);
+    const custom: DateOverride = { mode: "custom", intervals: [{ start: "10:00", end: "11:00" }], reason: "private" };
+    const grid = generateSlotChoices(value, date, custom, occupied, new Date(`${date}T09:20Z`));
+    expect(grid.map((slot) => slot.label)).toEqual(["10:20 AM – 10:40 AM", "10:40 AM – 11:00 AM"]);
+    expect(grid.every((slot) => slot.availability === "unavailable")).toBe(true);
+    expect(generateSlotChoices(value, "2026-11-10", null, occupied, now)).toEqual([]);
+    expect(generateSlotChoices(value, "2026-11-08", null, occupied, now)).toEqual([]);
+  });
+  it.each(["2026-03-08", "2026-11-01"])("preserves the DST-safe grid and marks occupancy on %s", (day) => {
+    const value = config(); value.timezone = "America/New_York"; value.minLeadMinutes = 0; value.durationMinutes = 30;
+    value.weeklyHours[6].intervals = [{ start: "00:00", end: "04:00" }];
+    const clock = new Date(`${addDays(day, -1)}T12:00Z`);
+    const free = generateSlots(value, day, null, [], clock), chosen = free.at(-1)!;
+    const occupied = [occupancy(chosen.occupiedStart, chosen.occupiedEnd, "appointment")];
+    const grid = generateSlotChoices(value, day, null, occupied, clock);
+    expect(grid.map((slot) => slot.startsAt)).toEqual(free.map((slot) => slot.startsAt));
+    expect(grid.at(-1)?.availability).toBe("unavailable");
+    expect(grid.filter((slot) => slot.availability === "available").map((slot) => slot.startsAt)).toEqual(generateSlots(value, day, null, occupied, clock).map((slot) => slot.startsAt));
   });
 });

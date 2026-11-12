@@ -105,7 +105,7 @@ test("mobile keyboard booking preserves the destination, registers a patient and
 
 test("abandoning a selected slot or review creates no appointment and keeps the time free", async ({ page }, testInfo) => {
   await seedClinic(); await signIn(page); await showTimes(page);
-  const slots = page.locator('[aria-label="Available times"]');
+  const slots = page.getByRole("group", { name: "Appointment times", exact: true });
   expect((await slots.boundingBox())!.width).toBeGreaterThan(900);
   await expect(page.locator("main")).not.toContainText("Bookings open through");
   await page.screenshot({ path: testInfo.outputPath("desktop-booking-slots.png"), fullPage: true });
@@ -173,6 +173,7 @@ test("competing patients cannot both confirm the same visible slot", async ({ pa
     const winner = responses[0].status() === 200 ? page : other, loser = winner === page ? other : page;
     await expect(winner.getByRole("heading", { name: "Appointment confirmed", exact: true })).toBeVisible();
     await expect(loser.locator("main").getByRole("alert")).toContainText("no longer available");
+    await expect(loser.getByRole("button", { name: "9:00 AM – 9:20 AM Unavailable", exact: true })).toBeDisabled();
     expect(await counts()).toEqual({ appointments: 1, reservations: 1, audit: 1, receipts: 1 });
   } finally { await otherContext.close(); }
 });
@@ -301,4 +302,58 @@ test("optional WhatsApp consent survives review and can be withdrawn without cha
   const withdrawn = await withDatabase(async (client) => (await client.query("SELECT c.withdrawn, c.withdrawn_at, n.status, a.status AS appointment_status FROM whatsapp_consents c JOIN whatsapp_notifications n USING (appointment_id) JOIN appointments a ON a.id=c.appointment_id")).rows[0]);
   expect(withdrawn).toMatchObject({ withdrawn: true, status: "suppressed", appointment_status: "confirmed" });
   expect(withdrawn.withdrawn_at).toBeInstanceOf(Date);
+});
+
+
+test("occupied times explain their state, reject keyboard selection and refresh after cancellation", async ({ page }) => {
+  await seedClinic(); await signIn(page); await showTimes(page); await review(page);
+  const saved = page.waitForResponse((response) => response.url().endsWith("/api/patient/bookings") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  const { receipt } = await (await saved).json();
+  await expect(page.getByRole("heading", { name: "Appointment confirmed", exact: true })).toBeVisible();
+  await page.goto("/book");
+  await page.getByLabel("Appointment date", { exact: true }).fill(day());
+  await page.getByRole("button", { name: "Show times", exact: true }).click();
+  const occupied = page.getByRole("button", { name: "9:00 AM – 9:20 AM Unavailable", exact: true });
+  await expect(occupied).toBeDisabled();
+  await expect(occupied).toHaveAccessibleDescription("Unavailable times cannot be booked, including time needed between appointments.");
+  // aria-disabled keeps the explanation reachable through the keyboard.
+  await page.getByRole("button", { name: "Show times", exact: true }).focus(); await page.keyboard.press("Tab");
+  await expect(occupied).toBeFocused();
+  await page.keyboard.press("Enter"); await page.keyboard.press("Space");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(occupied).toHaveAttribute("aria-pressed", "false");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "9:20 AM – 9:40 AM", exact: true })).toBeFocused();
+  expect((await counts()).appointments).toBe(1);
+  const cancellation = await page.request.post("/api/patient/appointments/cancel", { headers: { origin: new URL(page.url()).origin }, data: { appointmentId: receipt.id } });
+  expect(cancellation.status()).toBe(200);
+  await page.getByRole("button", { name: "Show times", exact: true }).click();
+  await expect(page.getByRole("button", { name: "9:00 AM – 9:20 AM", exact: true })).toBeEnabled();
+  await expect(occupied).toHaveCount(0);
+});
+
+test("a fully occupied selected date shows unavailable times and mobile touch cannot select them", async ({ browser }) => {
+  await seedClinic();
+  await withDatabase(async (client) => {
+    await client.query("INSERT INTO reservations (doctor_id,kind,starts_at,ends_at,reason) VALUES (1,'appointment',($1::date + time '09:00') AT TIME ZONE 'Asia/Kolkata',($1::date + time '12:00') AT TIME ZONE 'Asia/Kolkata','private occupancy note')", [day()]);
+  });
+  const context = await browser.newContext({ baseURL: process.env.NUVORTIQ_E2E_URL, viewport: { width: 320, height: 800 }, isMobile: true, hasTouch: true, extraHTTPHeaders: { "x-forwarded-for": "192.0.2.249" } });
+  try {
+    const page = await context.newPage(); await signIn(page);
+    await page.getByLabel("Appointment date", { exact: true }).fill(day());
+    await page.getByRole("button", { name: "Show times", exact: true }).tap();
+    const group = page.getByRole("group", { name: "Appointment times", exact: true });
+    await expect(group.getByRole("button")).toHaveCount(9);
+    const occupied = group.getByRole("button").first();
+    await expect(occupied).toBeDisabled(); await expect(occupied).toContainText("Unavailable");
+    await expect(page.getByRole("status")).toContainText("No free times on this date");
+    // Tap the screen directly: Playwright correctly refuses a locator.tap on aria-disabled controls.
+    const box = await occupied.boundingBox(); expect(box).not.toBeNull();
+    await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.locator("main")).not.toContainText("private occupancy note");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect((await counts()).appointments).toBe(0);
+  } finally { await context.close(); }
 });

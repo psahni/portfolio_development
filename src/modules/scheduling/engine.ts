@@ -137,6 +137,23 @@ export function generateSlots(
   return slots;
 }
 
+export type SlotChoice = Pick<Slot, "startsAt" | "endsAt" | "label"> & { availability: "available" | "unavailable" };
+
+/** Patient-safe grid: retain appointment conflicts, but keep breaks and other exclusions hidden. */
+export function generateSlotChoices(
+  config: ClinicConfiguration, date: string, override: DateOverride | null, occupied: Occupancy[], now: Date,
+): SlotChoice[] {
+  const appointments = occupied.filter((row) => row.kind === "appointment");
+  return generateSlots(config, date, override, occupied.filter((row) => row.kind === "block"), now)
+    .map(({ startsAt, endsAt, label, occupiedStart, occupiedEnd }) => ({
+      startsAt, endsAt, label,
+      // Compare saved occupancy (including old buffers) with the candidate's buffers.
+      // Generic wording avoids claiming a visit occurs during a buffer-only conflict.
+      availability: appointments.some((row) => row.startsAt < new Date(occupiedEnd) && row.endsAt > new Date(occupiedStart))
+        ? "unavailable" : "available",
+    }));
+}
+
 /** Compare booked occupancy snapshots, not the current duration/buffer rules. */
 export function occupancyFits(config: ClinicConfiguration, override: DateOverride | null, occupancy: Occupancy) {
   const start = zoned(occupancy.startsAt, config.timezone), end = zoned(occupancy.endsAt, config.timezone);
