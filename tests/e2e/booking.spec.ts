@@ -293,7 +293,10 @@ test("optional WhatsApp consent survives review and can be withdrawn without cha
   expect(saved).toHaveLength(1); expect(saved[0]).toMatchObject({ consented: true, withdrawn: false, status: "pending", attempts: 0 });
   expect(saved[0].recorded_at).toBeInstanceOf(Date);
   await page.getByRole("link", { name: "View My appointments", exact: true }).click();
+  // The button label changes while pending; wait for the committed withdrawal.
+  const withdrawalResponse = page.waitForResponse((response) => response.url().endsWith("/api/patient/whatsapp/withdraw") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Withdraw WhatsApp consent", exact: true }).click();
+  expect((await withdrawalResponse).status()).toBe(200);
   await expect(page.getByRole("button", { name: "Withdraw WhatsApp consent", exact: true })).toHaveCount(0);
   const withdrawn = await withDatabase(async (client) => (await client.query("SELECT c.withdrawn, c.withdrawn_at, n.status, a.status AS appointment_status FROM whatsapp_consents c JOIN whatsapp_notifications n USING (appointment_id) JOIN appointments a ON a.id=c.appointment_id")).rows[0]);
   expect(withdrawn).toMatchObject({ withdrawn: true, status: "suppressed", appointment_status: "confirmed" });
