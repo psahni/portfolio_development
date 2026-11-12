@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, Clock3, LayoutDashboard, Settings2 } from "lucide-react";
+import { ArrowLeft, CalendarDays, Clock3, LayoutDashboard, Settings2, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { Brand } from "./brand";
 
-type Section = "workspace" | "calendar" | "appointments" | "availability" | "settings";
+type Section = "workspace" | "calendar" | "appointments" | "availability" | "settings" | "staff";
 const navigation = [
   { key: "workspace", label: "Overview", href: "/admin/workspace", icon: LayoutDashboard },
   { key: "calendar", label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
   { key: "appointments", label: "Appointments", href: "/admin/appointments", icon: CalendarDays },
   { key: "availability", label: "Availability", href: "/admin/availability", icon: Clock3 },
   { key: "settings", label: "Clinic settings", href: "/admin/settings", icon: Settings2 },
+  { key: "staff", label: "Staff", href: "/admin/staff", icon: Users },
 ] as const;
 
 export function ClinicShell({ active, title, description, children, actions, admin = true }: {
