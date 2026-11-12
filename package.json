@@ -20,7 +20,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:bootstrap-admin": "node --conditions=react-server --import tsx scripts/bootstrap-admin.ts",
-    "db:local": "tsx scripts/local-postgres.ts"
+    "db:local": "tsx scripts/local-postgres.ts",
+    "worker:whatsapp": "node --conditions=react-server --import tsx scripts/whatsapp-worker.ts"
   },
   "dependencies": {
     "@js-temporal/polyfill": "0.5.1",

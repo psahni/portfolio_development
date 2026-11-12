@@ -16,7 +16,7 @@ const bookingFields = {
   }, "Choose a supported appointment date.").transform((value) => new Date(value).toISOString()),
   name, phone,
 };
-export const patientBookingSchema = z.object(bookingFields).strict();
+export const patientBookingSchema = z.object({ ...bookingFields, whatsappConsent: z.boolean().default(false) }).strict();
 export const patientCancellationSchema = z.object({ appointmentId: z.uuid() }).strict();
 export type CancellationReceipt = { id: string; status: "cancelled" };
 export const clinicBookingSchema = z.object({ ...bookingFields, email }).strict();

@@ -11,7 +11,7 @@ import { BookingDetails } from "./booking-details";
 
 type View = { email: string; availability: AvailableTimes };
 type Slot = AvailableTimes["slots"][number];
-type Submission = { requestId: string; startsAt: string; name: string; phone: string };
+type Submission = { requestId: string; startsAt: string; name: string; phone: string; whatsappConsent: boolean };
 function dateLabel(date: string) {
   return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(new Date(`${date}T12:00:00Z`));
 }
@@ -26,6 +26,7 @@ export function BookingForm({ initial }: { initial: View }) {
   const [selected, setSelected] = useState<Slot | null>(null);
   const [returningToDetails, setReturningToDetails] = useState(false);
   const [name, setName] = useState(""), [phone, setPhone] = useState("");
+  const [whatsappConsent, setWhatsAppConsent] = useState(false);
   const [step, setStep] = useState<"choose" | "details" | "review">("choose");
   const [pending, setPending] = useState<"times" | "confirm" | null>(null);
   const [error, setError] = useState(""), [timesError, setTimesError] = useState("");
@@ -63,7 +64,7 @@ export function BookingForm({ initial }: { initial: View }) {
     inFlight.current = true; setPending("confirm"); setError("");
     // A missing response may mean COMMIT succeeded. Keep the exact payload and UUID
     // until a definite result; retry must not silently become another booking.
-    submission.current ??= { requestId: crypto.randomUUID(), startsAt: selected.startsAt, name, phone };
+    submission.current ??= { requestId: crypto.randomUUID(), startsAt: selected.startsAt, name, phone, whatsappConsent };
     try {
       const response = await fetch("/api/patient/bookings", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", cache: "no-store", body: JSON.stringify(submission.current) });
       const data = await response.json();
@@ -107,10 +108,10 @@ export function BookingForm({ initial }: { initial: View }) {
         </div> : <p role="status" className="ui-hint mt-4 rounded-lg bg-muted p-4">{availability.closed ? "The clinic is closed on this date. Please choose another day." : "No times available for this date. Please choose another day."}</p>}
       </>}
     </section>
-    {selected && visit && <BookingDetails open={step === "details"} focusReview={returningToDetails} locked={locked} visit={visit} timezone={availability.timezone} email={email} name={name} phone={phone} error={error}
+    {selected && visit && <BookingDetails open={step === "details"} focusReview={returningToDetails} locked={locked} visit={visit} timezone={availability.timezone} email={email} name={name} phone={phone} whatsappConsent={whatsappConsent} onWhatsAppConsentChange={setWhatsAppConsent} error={error}
       onNameChange={setName} onPhoneChange={setPhone} onReview={review} onClose={() => { if (!locked) { setReturningToDetails(false); setSelected(null); setStep("choose"); setError(""); } }} />}
     <BookingReview open={step === "review" && !!selected} locked={locked} pending={pending === "confirm"} uncertain={uncertain} signInRequired={signInRequired}
-      visit={visit} timezone={availability.timezone} name={name} email={email} phone={phone} error={error}
+      visit={visit} timezone={availability.timezone} name={name} email={email} phone={phone} whatsappConsent={whatsappConsent} error={error}
       onClose={() => { if (!locked) { setReturningToDetails(false); setSelected(null); setStep("choose"); setError(""); } }}
       onEdit={() => { if (!locked) { setReturningToDetails(true); setStep("details"); setError(""); } }} onConfirm={() => void confirm()} />
   </div>;

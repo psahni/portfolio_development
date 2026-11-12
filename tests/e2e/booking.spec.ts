@@ -269,3 +269,36 @@ test("a patient cannot confirm a second appointment on the same clinic date", as
   await expect(page.locator("main").getByRole("alert")).toBeFocused();
   expect(await counts()).toEqual({ appointments: 1, reservations: 1, audit: 1, receipts: 1 });
 });
+
+
+test("optional WhatsApp consent survives review and can be withdrawn without changing the booking", async ({ page }) => {
+  await seedClinic(); await signIn(page); await showTimes(page);
+  await page.getByRole("button", { name: "9:00 AM – 9:20 AM", exact: true }).click();
+  const consent = page.getByRole("checkbox", { name: "I agree to WhatsApp appointment notifications (optional)", exact: true });
+  await expect(consent).not.toBeChecked();
+  await page.getByLabel("Full name", { exact: true }).fill("Synthetic Consent Patient");
+  await page.getByLabel("Phone number", { exact: true }).fill("+91 98765 43210");
+  await consent.check(); await page.getByRole("button", { name: "Review booking", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).toContainText("Consent given (test recipient only)");
+  expect((await counts()).appointments).toBe(0);
+  await page.getByRole("button", { name: "Edit details", exact: true }).click();
+  await expect(consent).toBeChecked(); await consent.uncheck();
+  await page.getByRole("button", { name: "Review booking", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Review your appointment", exact: true })).toContainText("Not requested");
+  await page.getByRole("button", { name: "Edit details", exact: true }).click(); await consent.check();
+  await page.getByRole("button", { name: "Review booking", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Appointment confirmed", exact: true })).toBeVisible();
+  const saved = await withDatabase(async (client) => (await client.query("SELECT c.consented, c.recorded_at, c.withdrawn, n.status, n.attempts FROM whatsapp_consents c JOIN whatsapp_notifications n USING (appointment_id)")).rows);
+  expect(saved).toHaveLength(1); expect(saved[0]).toMatchObject({ consented: true, withdrawn: false, status: "pending", attempts: 0 });
+  expect(saved[0].recorded_at).toBeInstanceOf(Date);
+  await page.getByRole("link", { name: "View My appointments", exact: true }).click();
+  // The button label changes while pending; wait for the committed withdrawal.
+  const withdrawalResponse = page.waitForResponse((response) => response.url().endsWith("/api/patient/whatsapp/withdraw") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Withdraw WhatsApp consent", exact: true }).click();
+  expect((await withdrawalResponse).status()).toBe(200);
+  await expect(page.getByRole("button", { name: "Withdraw WhatsApp consent", exact: true })).toHaveCount(0);
+  const withdrawn = await withDatabase(async (client) => (await client.query("SELECT c.withdrawn, c.withdrawn_at, n.status, a.status AS appointment_status FROM whatsapp_consents c JOIN whatsapp_notifications n USING (appointment_id) JOIN appointments a ON a.id=c.appointment_id")).rows[0]);
+  expect(withdrawn).toMatchObject({ withdrawn: true, status: "suppressed", appointment_status: "confirmed" });
+  expect(withdrawn.withdrawn_at).toBeInstanceOf(Date);
+});

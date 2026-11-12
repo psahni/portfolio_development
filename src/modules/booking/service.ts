@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, gt, gte, lt, ne, sql } from "drizzle-orm";
+import type { BookingEvents } from "./events";
 import type { ApplicationDatabase } from "@/db/connection";
 import { patientSession, patientUser, staffAccess, staffSession } from "@/db/schema/auth";
 import { appointments, bookingAudit, bookingRequests } from "@/db/schema/booking";
@@ -17,7 +18,7 @@ type BookingAccess = {
   requireClinicAccess(headers: Headers): Promise<ClinicPrincipal>;
   requirePatientAccess(headers: Headers): Promise<{ userId: string; sessionId: string }>;
 };
-type BookingInput = { requestId: string; startsAt: string; name: string; phone: string; email?: string };
+type BookingInput = { requestId: string; startsAt: string; name: string; phone: string; email?: string; whatsappConsent?: boolean };
 const RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const CANCELLATION_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 
@@ -49,7 +50,7 @@ function isOverlapError(error: unknown) {
   return false;
 }
 
-export function createBookingService(db: ApplicationDatabase, access: BookingAccess, protection: ContactProtection, clock = () => new Date()) {
+export function createBookingService(db: ApplicationDatabase, access: BookingAccess, protection: ContactProtection, clock = () => new Date(), events: BookingEvents = {}) {
   async function save(actor: BookingActor, input: BookingInput): Promise<BookingReceipt> {
     try {
       // Returning this promise waits for COMMIT. No provider calls or user confirmation
@@ -59,7 +60,9 @@ export function createBookingService(db: ApplicationDatabase, access: BookingAcc
         if (!doctor) throw new BookingError(409, "CLINIC_NOT_READY", "Clinic settings must be saved before booking.");
         const verifiedEmail = await assertActorActive(tx, actor), now = clock();
         const contact: PatientContact = { name: input.name, phone: input.phone, email: verifiedEmail ?? input.email! };
-        const fingerprint = protection.fingerprint(JSON.stringify({ startsAt: input.startsAt, ...contact }));
+        const whatsappConsent = actor.kind === "patient" && input.whatsappConsent === true;
+        // Preserve fingerprints of pre-integration requests when consent is absent.
+        const fingerprint = protection.fingerprint(JSON.stringify({ startsAt: input.startsAt, ...contact, ...(whatsappConsent ? { whatsappConsent: true } : {}) }));
         const requestScope = and(eq(bookingRequests.actorKind, actor.kind), eq(bookingRequests.actorId, actor.userId), eq(bookingRequests.requestId, input.requestId));
         const [previous] = await tx.select().from(bookingRequests).where(requestScope);
         if (previous) {
@@ -114,6 +117,7 @@ export function createBookingService(db: ApplicationDatabase, access: BookingAcc
         await tx.insert(bookingAudit).values({ appointmentId: id, actorKind: actor.kind, actorId: actor.userId, createdAt: now });
         await tx.insert(bookingRequests).values({ actorKind: actor.kind, actorId: actor.userId, requestId: input.requestId,
           fingerprint, appointmentId: id, receipt, createdAt: now, expiresAt: new Date(now.getTime() + RETRY_WINDOW_MS) });
+        await events.created?.(tx, { appointmentId: id, whatsappConsent, at: now });
         return receipt;
       }, { isolationLevel: "read committed" });
     } catch (error) {

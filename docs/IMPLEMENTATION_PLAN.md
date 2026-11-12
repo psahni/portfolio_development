@@ -8,6 +8,8 @@ Scope: **one clinic, one branch and one doctor**. Multiple clinics/branches are 
 
 The MVP includes native patient booking and an admin/staff interface. PostgreSQL owns bookings; Google Calendar is an optional outbound mirror.
 
+**Current next slice:** #15 WhatsApp Phase 1 is approved before staff management: optional consent, fixed Meta test sender/recipient, transactional booking-created jobs and a separate worker. Production/dynamic recipients, webhooks, reminders and cancellation messages remain deferred. Review the whole solution after WhatsApp integration.
+
 **Delivery priority:** Complete working features one approved task at a time. Keep essential access checks, input validation and credential protection; defer sophisticated security infrastructure to the separate M6 security-hardening task.
 
 ## Login requirements

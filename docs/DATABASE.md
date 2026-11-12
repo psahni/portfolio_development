@@ -37,3 +37,5 @@ Statuses: **confirmed, cancelled, completed, no_show**. Collect patient email fo
 Before launch, test account ownership, both login flows, permissions, concurrent bookings, notice retries and migration replay against real PostgreSQL. Agree on retention and verify backup restoration. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Migration `0007` adds nullable patient cancellation timestamp/late classification, saved atomically with release and audit. Less than two hours is late; exactly two hours is on time. Existing history is not backfilled. A consistency constraint enforces paired values, patient ownership, cancelled status and the two-hour boundary; the occupancy exclusion constraint is unchanged.
+
+Migration `0008_whatsapp_phase_one.sql` adds separate `whatsapp_consents`, `whatsapp_notifications` and `whatsapp_attempts` tables. Consent retains the server recording time and withdrawal status/time. One unique appointment/event job joins the creation transaction; attempts contain safe codes and API message IDs, never access tokens or raw provider bodies. Existing bookings are not backfilled. The GiST occupancy constraint is unchanged.

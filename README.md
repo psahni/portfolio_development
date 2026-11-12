@@ -84,3 +84,28 @@ CI is configured for GitHub Actions and runs on pushes and pull requests. Check 
 4. Review the working milestone before expanding to the next slice.
 
 See [implementation plan](docs/IMPLEMENTATION_PLAN.md), [architecture](docs/ARCHITECTURE.md), [database design](docs/DATABASE.md) and [agent guidance](AGENTS.md). The admin workspace provides the hosted `/book` link and a copyable HTML website button. Patients sign in, choose a slot, enter name/phone and review before **Confirm booking** creates occupancy. Calendar and notification jobs remain future integration tasks.
+
+## WhatsApp Phase 1 (Meta test account)
+
+The optional booking checkbox records appointment-specific consent and its server timestamp. My appointments offers **Withdraw WhatsApp consent**, retaining the original consent and withdrawal time. Only active consent queues a booking-created notification. Existing bookings have no consent and are not backfilled. Consent is part of the request identity; replaying a confirmation cannot restore withdrawn consent.
+
+Apply reviewed migration `0008_whatsapp_phase_one.sql` explicitly with the normal migration command before using this code. It adds separate consent, notification and attempt tables; it preserves booking data and the GiST overlap constraint. The web process saves consent and one unique notification job with the appointment transaction. Delivery is selected with `WHATSAPP_USE_WORKER`. No Meta call runs in booking logic. Failed/abandoned bookings send nothing; notification failures never undo bookings.
+
+Configure the `WHATSAPP_*` entries from `.env.example` in ignored `.env.local`. Use Meta's test phone-number ID and your own pre-verified test recipient. **Every message goes to that fixed recipient, regardless of the appointment phone number.** Use synthetic bookings only. Credentials stay server-side; no token, recipient, raw API body or patient contacts are printed. Enabled Phase 1 workers reject production mode. Keep `WHATSAPP_ENABLED=false` until ready for authorized test sends.
+
+```sh
+pnpm worker:whatsapp          # process currently due jobs, then exit
+pnpm worker:whatsapp --watch  # poll for new jobs and safe bounded retries
+```
+
+With `WHATSAPP_USE_WORKER=true` (the default), starting an enabled worker makes real API calls to the configured test recipient. The booking request returns without waiting for Meta. Disabled workers exit without database access or sending. The worker also exits without sending when `WHATSAPP_USE_WORKER=false`. Pending consented jobs remain saved while disabled; review them before enabling. Jobs for cancelled/started visits or withdrawn consent are suppressed. Withdrawal stops pending notifications; an already in-flight send cannot be recalled.
+
+**Request delivery:** Set `WHATSAPP_ENABLED=true` and `WHATSAPP_USE_WORKER=false`, then restart the app. No worker is needed. After the appointment commits, the confirmation request awaits one Meta send for that appointment with a three-second API timeout, then returns the normal successful booking receipt even if Meta fails. It uses the same consent checks, unique job and attempt records as the worker; it never drains other appointments’ jobs. Definite failures stop without automatic retries; timeouts remain uncertain and are not automatically resent. A clear server warning says the notification could not be sent or confirmed and the appointment remains confirmed, with safe status/error codes. Notification configuration/database failures after commit also preserve the booking response. The three-second limit covers Meta, not the database work.
+
+Restart both processes when changing delivery mode. Shared claims prevent duplicate sends if old and new processes briefly overlap. Previously failed/uncertain jobs are not reset by changing the flag. Pending jobs remain saved; in request mode they require the matching confirmation request to be retried or later worker processing.
+
+`no_parameters` mode supports the available `hello_world` template as a connectivity test; it does **not** confirm appointment details. For a useful appointment confirmation, configure an approved template in `appointment` mode whose two body parameters are the local visit date/time and timezone. Template availability/approval must be checked in your Meta account. This phase neither creates templates nor assumes plain-text messages are available outside the customer-service window.
+
+Inspect `whatsapp_notifications` for pending/sending/accepted/failed/uncertain/suppressed state and `whatsapp_attempts` for each attempt, safe error code, API message ID and timestamps. **Accepted means API acceptance, not delivery.** In worker mode, explicit HTTP 429 rejections retry at most three total attempts; other rejections stop. In request mode, each event has one automatic send attempt, including rate-limit failures. Timeouts, server errors, malformed success responses and interrupted sends become uncertain and are not automatically resent, because Meta does not provide exactly-once sending here. Investigate uncertain outcomes before any manual intervention. Worker crashes during result persistence leave a sending job that becomes uncertain on recovery.
+
+Phase 2 covers production sender registration, dynamic patient recipients and further tracking. Reminders, cancellation messages and webhooks are not implemented in Phase 1. Local verification uses Meta mocks; real sending requires locally configured test credentials and the approved recipient.

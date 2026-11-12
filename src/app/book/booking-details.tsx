@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 
 type Props = {
   open: boolean; focusReview: boolean; locked: boolean; visit: { date: string; time: string }; timezone: string; email: string; name: string; phone: string; error: string;
+  whatsappConsent: boolean; onWhatsAppConsentChange: (value: boolean) => void;
   onNameChange: (value: string) => void; onPhoneChange: (value: string) => void; onReview: (event: FormEvent<HTMLFormElement>) => void; onClose: () => void;
 };
 
-export function BookingDetails({ open, focusReview, locked, visit, timezone, email, name, phone, error, onNameChange, onPhoneChange, onReview, onClose }: Props) {
+export function BookingDetails({ open, focusReview, locked, visit, timezone, email, name, phone, error, whatsappConsent, onWhatsAppConsentChange, onNameChange, onPhoneChange, onReview, onClose }: Props) {
   const panel = useRef<HTMLDialogElement>(null), heading = useRef<HTMLHeadingElement>(null), reviewButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const dialog = panel.current;
@@ -26,6 +27,7 @@ export function BookingDetails({ open, focusReview, locked, visit, timezone, ema
       <div><label htmlFor="booking-name" className="text-sm font-medium">Full name</label><input id="booking-name" name="name" autoComplete="name" maxLength={100} value={name} onChange={(event) => onNameChange(event.target.value)} disabled={locked} className="ui-input" /></div>
       <div><label htmlFor="booking-email" className="text-sm font-medium">Verified email</label><input id="booking-email" type="email" value={email} readOnly className="ui-input bg-muted" /><p className="ui-hint mt-2 text-xs">This is the email you signed in with.</p></div>
       <div><label htmlFor="booking-phone" className="text-sm font-medium">Phone number</label><input id="booking-phone" name="phone" type="tel" autoComplete="tel" maxLength={40} value={phone} onChange={(event) => onPhoneChange(event.target.value)} disabled={locked} className="ui-input" /></div>
+      <div><label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={whatsappConsent} disabled={locked} onChange={(event) => onWhatsAppConsentChange(event.target.checked)} className="mt-1" /><span>I agree to WhatsApp appointment notifications (optional)</span></label><p className="ui-hint mt-2 text-xs">You can withdraw consent in My appointments. During testing, notifications go only to the clinic’s registered test recipient.</p></div>
       {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}
       <Button ref={reviewButton} type="submit" disabled={locked} className="w-full">Review booking</Button>
     </form>
