@@ -19,9 +19,12 @@ export function ClinicBookingForm({ initial }: { initial: AvailableTimes }) {
   const submission = useRef<Submission | null>(null), inFlight = useRef(false), heading = useRef<HTMLHeadingElement>(null);
   const locked = !!pending || uncertain || accessDenied;
   useEffect(() => { if (selected || receipt) heading.current?.focus(); }, [selected, reviewing, receipt]);
-  const agenda = `/admin/appointments?date=${encodeURIComponent(view.date)}`;
+  // A settings change during review may change the committed clinic date/timezone.
+  const confirmedDate = receipt ? Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: receipt.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(receipt.startsAt)).map((part) => [part.type, part.value])) : null;
+  const agendaDate = confirmedDate ? `${confirmedDate.year}-${confirmedDate.month}-${confirmedDate.day}` : view.date;
+  const agenda = `/admin/appointments?date=${encodeURIComponent(agendaDate)}`;
   const dateLabel = (value: string) => new Intl.DateTimeFormat("en-US", { timeZone: "UTC", dateStyle: "full" }).format(new Date(`${value}T12:00:00Z`));
-  const timeLabel = (value: string) => new Intl.DateTimeFormat("en-US", { timeZone: view.timezone, hour: "numeric", minute: "2-digit" }).format(new Date(value));
+  const timeLabel = (value: string, timezone: string) => new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", minute: "2-digit" }).format(new Date(value));
 
   async function loadTimes(chosenDate: string) {
     setPending("times"); setError(""); setSelected(null); setReviewing(false);
@@ -52,7 +55,10 @@ export function ClinicBookingForm({ initial }: { initial: AvailableTimes }) {
     try {
       const response = await fetch("/api/admin/bookings", { method: "POST", cache: "no-store", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(submission.current) });
       const data = await response.json();
-      if (response.ok && data.receipt) { setReceipt(data.receipt); setUncertain(false); return; }
+      if (response.ok) {
+        if (!data.receipt) throw new Error("Missing confirmation receipt");
+        setReceipt(data.receipt); setUncertain(false); return;
+      }
       if (response.status >= 500) throw new Error("Unknown confirmation result");
       if (response.status === 401 || response.status === 403) {
         setAccessDenied(true); setError(data.error ?? "Sign in again to continue."); return;
@@ -72,7 +78,7 @@ export function ClinicBookingForm({ initial }: { initial: AvailableTimes }) {
   if (receipt) return <section aria-label="Booking confirmation" className="ui-panel max-w-2xl">
     <h2 ref={heading} tabIndex={-1} className="text-xl font-semibold">Appointment confirmed</h2>
     <p role="status" className="ui-hint mt-3">The appointment is saved in the clinic agenda.</p>
-    <dl className="mt-5 space-y-3 text-sm"><div><dt className="text-muted-foreground">Patient</dt><dd className="break-words font-medium">{name}</dd></div><div><dt className="text-muted-foreground">Date</dt><dd>{dateLabel(view.date)}</dd></div><div><dt className="text-muted-foreground">Time</dt><dd>{timeLabel(receipt.startsAt)} – {timeLabel(receipt.endsAt)} ({receipt.timezone})</dd></div></dl>
+    <dl className="mt-5 space-y-3 text-sm"><div><dt className="text-muted-foreground">Patient</dt><dd className="break-words font-medium">{name}</dd></div><div><dt className="text-muted-foreground">Date</dt><dd>{dateLabel(agendaDate)}</dd></div><div><dt className="text-muted-foreground">Time</dt><dd>{timeLabel(receipt.startsAt, receipt.timezone)} – {timeLabel(receipt.endsAt, receipt.timezone)} ({receipt.timezone})</dd></div></dl>
     <Button asChild className="mt-6"><Link href={agenda}>View daily agenda</Link></Button>
   </section>;
 

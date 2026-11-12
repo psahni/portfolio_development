@@ -118,3 +118,21 @@ test("booking denies anonymous and patient access, and staff see closed dates wi
   await expect(page).toHaveURL(/\/appointments$/); await page.goto("/admin/book"); await expect(page).toHaveURL(/\/admin$/);
   expect((await page.request.get("/api/admin/booking-availability")).status()).toBe(401);
 });
+
+
+test("confirmation and agenda use the committed timezone after settings change during review", async ({ page }) => {
+  await seedClinic(); await login(page); await choose(page); await review(page);
+  // The chosen instant is 03:30 UTC. Keep it bookable after moving the clinic
+  // to UTC, so the receipt must show saved settings rather than the old preview.
+  await withDatabase(async (db) => {
+    await db.query("UPDATE clinic_settings SET timezone='UTC' WHERE id=1");
+    await db.query("UPDATE weekly_hours SET start_minute=210, end_minute=390");
+  });
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  const confirmation = page.getByRole("region", { name: "Booking confirmation" });
+  await expect(confirmation).toContainText("3:30 AM – 3:50 AM (UTC)");
+  await page.getByRole("link", { name: "View daily agenda" }).click();
+  await expect(page.getByLabel("Appointment date", { exact: true })).toHaveValue(day());
+  await expect(page.getByRole("heading", { name: "Reception Visitor" })).toBeVisible();
+  await expect(page.getByText("Clinic timezone: UTC.", { exact: false })).toBeVisible();
+});
