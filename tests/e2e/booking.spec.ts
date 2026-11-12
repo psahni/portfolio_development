@@ -105,7 +105,7 @@ test("mobile keyboard booking preserves the destination, registers a patient and
 
 test("abandoning a selected slot or review creates no appointment and keeps the time free", async ({ page }, testInfo) => {
   await seedClinic(); await signIn(page); await showTimes(page);
-  const slots = page.locator('[aria-label="Available times"]');
+  const slots = page.getByRole("group", { name: "Appointment times", exact: true });
   expect((await slots.boundingBox())!.width).toBeGreaterThan(900);
   await expect(page.locator("main")).not.toContainText("Bookings open through");
   await page.screenshot({ path: testInfo.outputPath("desktop-booking-slots.png"), fullPage: true });
