@@ -3,13 +3,13 @@ import { and, eq, gt, gte, lt, lte } from "drizzle-orm";
 import type { ApplicationDatabase } from "@/db/connection";
 import { dayOverrides, reservations } from "@/db/schema/scheduling";
 import { readClinicConfiguration } from "@/modules/clinic/repository";
-import { addDays, clinicDate, dayBounds, effectiveHours, generateSlots } from "./engine";
+import { addDays, clinicDate, dayBounds, effectiveHours, generateSlotChoices, type SlotChoice } from "./engine";
 import { dateSchema, SchedulingError } from "./models";
 
 export type AvailableTimes = {
   configured: boolean; clinicName: string; doctorName: string; timezone: string;
   date: string; today: string; lastDate: string; closed: boolean; noAvailableDates: boolean;
-  slots: { startsAt: string; endsAt: string; label: string }[];
+  slots: SlotChoice[];
 };
 
 // Shared read model for booking forms. Occupancy and internal notes never leave it.
@@ -45,11 +45,11 @@ export function createSlotAvailabilityService(db: ApplicationDatabase, clock = (
         const override = byDate.get(day.date) ?? null;
         const dayOccupancy = occupied.filter((row) => row.startsAt < day.end && row.endsAt > day.start);
         const view: AvailableTimes = { ...result, date: day.date, closed: effectiveHours(config, day.date, override).length === 0,
-          slots: generateSlots(config, day.date, override, dayOccupancy, now).map(({ startsAt, endsAt, label }) => ({ startsAt, endsAt, label })) };
+          slots: generateSlotChoices(config, day.date, override, dayOccupancy, now) };
         if (day === first) empty = view;
-        if (requestedDate || view.slots.length) return view;
+        if (requestedDate || view.slots.some((slot) => slot.availability === "available")) return view;
       }
-      return { ...empty, noAvailableDates: true };
+      return { ...empty, slots: [], noAvailableDates: true };
     }, { isolationLevel: "repeatable read", accessMode: "read only" });
   }
   return { read };
