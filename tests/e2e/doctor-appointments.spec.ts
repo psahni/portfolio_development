@@ -117,11 +117,11 @@ test("a revoked admin cannot submit from an already open confirmation", async ({
   expect((await state(booked.id)).appointment.status).toBe("confirmed");
 });
 
-test("staff and anonymous visitors cannot open doctor appointments; an unconfigured admin gets a setup prompt", async ({ page }) => {
+test("anonymous visitors cannot open appointments; staff and admin get setup guidance", async ({ page }) => {
   await page.goto("/admin/appointments"); await expect(page).toHaveURL(/\/admin$/);
-  await signIn(page, true); await expect(page.getByRole("link", { name: "Appointments navigation", exact: true })).toHaveCount(0);
-  await page.goto("/admin/appointments"); await expect(page).toHaveURL(/\/admin\/workspace$/);
-  expect((await page.request.get("/api/admin/appointments")).status()).toBe(403);
+  await signIn(page, true); await expect(page.getByRole("link", { name: "Appointments navigation", exact: true })).toHaveCount(1);
+  await page.goto("/admin/appointments"); await expect(page.getByText("Set up your clinic first", { exact: true })).toBeVisible();
+  expect((await page.request.get("/api/admin/appointments")).status()).toBe(200);
   await page.getByRole("button", { name: "Sign out", exact: true }).click(); await expect(page).toHaveURL(/\/admin$/);
   await signIn(page); await page.goto("/admin/appointments"); await expect(page.getByText("Set up your clinic first", { exact: true })).toBeVisible();
 });

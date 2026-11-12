@@ -12,11 +12,14 @@ import type { ContactProtection } from "./contact-protection";
 import { doctorCancellationSchema, doctorDateSchema, type DoctorAppointmentsView } from "./doctor-models";
 import { BookingError, type CancellationReceipt } from "./models";
 
-type AdminAccess = { requireAdminAccess(headers: Headers): Promise<ClinicPrincipal> };
+type AdminAccess = {
+  requireAdminAccess(headers: Headers): Promise<ClinicPrincipal>;
+  requireClinicAccess(headers: Headers): Promise<ClinicPrincipal>;
+};
 
 export function createDoctorAppointmentsService(db: ApplicationDatabase, access: AdminAccess, getProtection: () => ContactProtection, clock = () => new Date()) {
   async function view(headers: Headers, selectedDate?: string): Promise<DoctorAppointmentsView> {
-    await access.requireAdminAccess(headers);
+    const principal = await access.requireClinicAccess(headers);
     const requested = doctorDateSchema.parse(selectedDate);
     return db.transaction(async (tx) => {
       const config = await readClinicConfiguration(tx);
@@ -29,7 +32,7 @@ export function createDoctorAppointmentsService(db: ApplicationDatabase, access:
       return { configured: true, date, timezone: config.timezone, appointments: rows.map((row) => ({
         id: row.id, startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString(), bookedTimezone: row.timezone,
         status: row.status, patientCancellationLate: row.patientCancellationLate, contact: protection!.decrypt(row.id, row.contactCiphertext),
-        canCancel: row.status === "confirmed" && row.startsAt > now,
+        canCancel: principal.role === "admin" && row.status === "confirmed" && row.startsAt > now,
         cancellation: row.cancelledByStaffId ? { reason: row.cancellationReason!, rebookingInstruction: row.rebookingInstruction!,
           originalTimeBlocked: row.originalTimeBlocked, cancelledAt: row.cancelledAt!.toISOString() } : null,
       })) };

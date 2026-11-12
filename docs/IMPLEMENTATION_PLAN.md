@@ -1,14 +1,14 @@
 # Nuvortiq Smart Booking — Implementation Options
 
-**Status: patient-booking-first priority selected. ✅ Clinic settings [#6](https://github.com/psahni/portfolio_development/issues/6) and availability [#7](https://github.com/psahni/portfolio_development/issues/7) merged. Doctor calendar #20, shared booking #24 and patient sign-in/listing #10 are merged. Hosted patient booking #11 is merged into `main`; appointment management follows. Staff management #4 is implemented on this review branch. Use GitHub issues as task specs.**
+**Status: patient-booking-first priority selected. ✅ Clinic settings [#6](https://github.com/psahni/portfolio_development/issues/6) and availability [#7](https://github.com/psahni/portfolio_development/issues/7) merged. Doctor calendar #20, shared booking #24 and patient sign-in/listing #10 are merged. Hosted patient booking #11 is merged into `main`; appointment management follows. Staff management #4 is merged into `main`; receptionist booking and agenda #8 are implemented on this review branch. Use GitHub issues as task specs.**
 
-**Progress:** ✅ M1 foundation, M2.1 access checks and M2.2 shared clinic login are implemented. The [auth revision](specs/AUTH_CODE_REVISION.md) records the flow and checks. Staff management #4 is implemented on this review branch; PIN-change screens and real email delivery remain pending.
+**Progress:** ✅ M1 foundation, M2.1 access checks and M2.2 shared clinic login are implemented. The [auth revision](specs/AUTH_CODE_REVISION.md) records the flow and checks. Staff management #4 is merged into `main`; receptionist booking and agenda #8 are implemented on this review branch; PIN-change screens and real email delivery remain pending.
 
 Scope: **one clinic, one branch and one doctor**. Multiple clinics/branches are deferred.
 
 The MVP includes native patient booking and an admin/staff interface. PostgreSQL owns bookings; Google Calendar is an optional outbound mirror.
 
-**Current approved slice:** #4 admin-managed staff access: add/list staff and disable/re-enable access through the existing roles and code login. Implemented on this review branch. WhatsApp #15 Phase 1 is merged; the post-integration review is recorded in PR #36. Production/dynamic recipients, webhooks, reminders and cancellation messages remain deferred.
+**Current approved slice:** #8 receptionist booking and daily agenda: active admin/staff create appointments through the shared booking service and read `/admin/appointments`; cancellation remains admin-only. Implemented on this review branch; staff management #4 is merged in PR #37. WhatsApp #15 Phase 1 is merged; the post-integration review is recorded in PR #36. Production/dynamic recipients, webhooks, reminders and cancellation messages remain deferred.
 
 **Delivery priority:** Complete working features one approved task at a time. Keep essential access checks, input validation and credential protection; defer sophisticated security infrastructure to the separate M6 security-hardening task.
 

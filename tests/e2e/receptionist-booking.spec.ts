@@ -1,0 +1,120 @@
+import type { Page } from "@playwright/test";
+import { Client } from "pg";
+import { test, expect } from "./fixtures";
+
+async function withDatabase<T>(work: (db: Client) => Promise<T>) {
+  const connectionString = process.env.NUVORTIQ_E2E_DATABASE_URL;
+  if (!connectionString || new URL(connectionString).pathname !== "/nuvortiq_browser") throw new Error("Expected isolated browser database.");
+  const db = new Client({ connectionString });
+  try { await db.connect(); return await work(db); } finally { await db.end(); }
+}
+const day = () => new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+async function seedClinic() {
+  await withDatabase(async (db) => {
+    await db.query("INSERT INTO clinic_settings (id, name, timezone) VALUES (1, 'Reception Booking Clinic', 'Asia/Kolkata')");
+    await db.query("INSERT INTO doctor_profile (id, name, min_lead_minutes) VALUES (1, 'Synthetic Doctor', 0)");
+    for (let weekday = 0; weekday < 7; weekday++) await db.query("INSERT INTO weekly_hours (doctor_id, day, start_minute, end_minute) VALUES (1, $1, 540, 720)", [weekday]);
+  });
+}
+async function login(page: Page, admin = false) {
+  await page.goto("/admin"); await page.getByLabel("Email", { exact: true }).fill(admin ? "doctor@example.test" : "staff@example.test");
+  if (admin) await page.getByLabel("PIN", { exact: true }).fill("4821");
+  else { await page.getByRole("button", { name: "Send code" }).click(); await page.getByLabel("Code", { exact: true }).fill("0000"); }
+  await page.getByRole("button", { name: "Sign in", exact: true }).click(); await expect(page).toHaveURL(/\/admin\/workspace$/);
+  await page.getByRole("link", { name: "Book appointment navigation" }).click();
+}
+async function choose(page: Page) {
+  await page.getByLabel("Appointment date", { exact: true }).fill(day());
+  await page.getByRole("button", { name: "Show times", exact: true }).click();
+  await page.getByRole("button", { name: "9:00 AM – 9:20 AM", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Patient details", exact: true })).toBeFocused();
+}
+async function review(page: Page) {
+  await page.getByLabel("Patient name", { exact: true }).fill("Reception Visitor");
+  await page.getByLabel("Patient email", { exact: true }).fill("patient@example.test");
+  await page.getByLabel("Patient phone", { exact: true }).fill("+91 98765 43210");
+  await page.getByRole("button", { name: "Review booking", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Review appointment", exact: true })).toBeFocused();
+}
+async function count() { return withDatabase(async (db) => (await db.query("SELECT count(*)::int AS count FROM appointments")).rows[0].count as number); }
+
+test("mobile receptionist books after review and sees agenda without cancellation or patient auto-linking", async ({ page }) => {
+  await seedClinic(); await page.setViewportSize({ width: 390, height: 844 }); await login(page);
+  for (const name of ["Staff navigation", "Clinic settings navigation", "Availability navigation", "Calendar navigation"]) await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
+  await choose(page); await page.getByRole("button", { name: "Review booking", exact: true }).click();
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("valid email");
+  await review(page); expect(await count()).toBe(0);
+  await page.getByRole("button", { name: "Edit details", exact: true }).click();
+  await expect(page.getByLabel("Patient email", { exact: true })).toHaveValue("patient@example.test");
+  await page.getByRole("button", { name: "Review booking", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Appointment confirmed" })).toBeVisible(); expect(await count()).toBe(1);
+  await page.getByRole("link", { name: "View daily agenda" }).click();
+  await expect(page.getByRole("heading", { name: "Reception Visitor" })).toBeVisible();
+  await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Cancel/ })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await withDatabase(async (db) => {
+    const { rows } = await db.query("SELECT source, patient_user_id, created_by_staff_id FROM appointments");
+    expect(rows[0]).toMatchObject({ source: "clinic", patient_user_id: null }); expect(rows[0].created_by_staff_id).toBeTruthy();
+    expect((await db.query("SELECT count(*)::int AS count FROM whatsapp_notifications")).rows[0].count).toBe(0);
+  });
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.goto("/login"); await page.getByLabel("Email", { exact: true }).fill("patient@example.test");
+  await page.getByRole("button", { name: "Send code" }).click(); await page.getByLabel("Code", { exact: true }).fill("0000"); await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/appointments$/); await expect(page.getByText("Reception Visitor", { exact: true })).toHaveCount(0);
+});
+
+test("lost committed response preserves the exact request and retry returns one booking", async ({ page }) => {
+  await seedClinic(); await login(page); await choose(page); await review(page);
+  const payloads: string[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/api/admin/bookings", async (route) => {
+    payloads.push(route.request().postData()!);
+    if (payloads.length === 1) { await route.fetch(); await gate; await route.abort("failed"); }
+    else await route.continue();
+  });
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Confirming…", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Show times", exact: true })).toBeDisabled();
+  release(); await expect(page.getByRole("button", { name: "Retry confirmation", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit details", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Discard selection", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Retry confirmation", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Appointment confirmed" })).toBeVisible();
+  expect(payloads).toHaveLength(2); expect(payloads[0]).toBe(payloads[1]); expect(await count()).toBe(1);
+});
+
+test("slot conflicts refresh availability and discarding a selection creates nothing", async ({ page }) => {
+  await seedClinic(); await login(page, true); await choose(page); await review(page);
+  await page.route("**/api/admin/bookings", (route) => route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ code: "SLOT_UNAVAILABLE", error: "That slot is no longer available." }) }));
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("main").getByRole("alert")).toHaveText("That slot is no longer available.");
+  await expect(page.getByRole("heading", { name: "Review appointment", exact: true })).toHaveCount(0); expect(await count()).toBe(0);
+  await page.unroute("**/api/admin/bookings"); await choose(page);
+  await page.getByRole("button", { name: "Discard selection", exact: true }).click(); expect(await count()).toBe(0);
+  await page.reload(); await choose(page); await review(page); await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Appointment confirmed" })).toBeVisible();
+  await page.getByRole("link", { name: "View daily agenda" }).click();
+  await expect(page.getByRole("heading", { name: "Reception Visitor" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel appointment", exact: true })).toBeVisible();
+});
+
+test("booking denies anonymous and patient access, and staff see closed dates without admin setup links", async ({ page }) => {
+  await page.goto("/admin/book"); await expect(page).toHaveURL(/\/admin$/);
+  expect((await page.request.get("/api/admin/booking-availability")).status()).toBe(401);
+  await seedClinic(); await login(page);
+  await withDatabase(async (db) => { await db.query("DELETE FROM weekly_hours"); });
+  await page.reload(); await expect(page.getByRole("status")).toContainText("No appointments are available");
+  await page.getByLabel("Appointment date", { exact: true }).fill(day()); await page.getByRole("button", { name: "Show times", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("The clinic is closed");
+  await withDatabase(async (db) => { await db.query("DELETE FROM clinic_settings"); });
+  await page.reload(); await expect(page.getByRole("heading", { name: "Set up your clinic first" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Clinic settings", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.goto("/login"); await page.getByLabel("Email", { exact: true }).fill("patient@example.test");
+  await page.getByRole("button", { name: "Send code" }).click(); await page.getByLabel("Code", { exact: true }).fill("0000"); await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/appointments$/); await page.goto("/admin/book"); await expect(page).toHaveURL(/\/admin$/);
+  expect((await page.request.get("/api/admin/booking-availability")).status()).toBe(401);
+});
