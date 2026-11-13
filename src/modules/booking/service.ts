@@ -117,7 +117,7 @@ export function createBookingService(db: ApplicationDatabase, access: BookingAcc
         await tx.insert(bookingAudit).values({ appointmentId: id, actorKind: actor.kind, actorId: actor.userId, createdAt: now });
         await tx.insert(bookingRequests).values({ actorKind: actor.kind, actorId: actor.userId, requestId: input.requestId,
           fingerprint, appointmentId: id, receipt, createdAt: now, expiresAt: new Date(now.getTime() + RETRY_WINDOW_MS) });
-        await events.created?.(tx, { appointmentId: id, whatsappConsent, at: now });
+        await events.created?.(tx, { appointmentId: id, whatsappConsent, at: now, actorKind: actor.kind, receipt, clinic: config });
         return receipt;
       }, { isolationLevel: "read committed" });
     } catch (error) {

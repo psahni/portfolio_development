@@ -12,11 +12,13 @@ import type { ContactProtection } from "./contact-protection";
 import { doctorCancellationSchema, doctorDateSchema, type DoctorAppointmentsView } from "./doctor-models";
 import { BookingError, type CancellationReceipt } from "./models";
 
-type AdminAccess = { requireAdminAccess(headers: Headers): Promise<ClinicPrincipal> };
+type ClinicAccess = {
+  requireClinicAccess(headers: Headers): Promise<ClinicPrincipal>;
+};
 
-export function createDoctorAppointmentsService(db: ApplicationDatabase, access: AdminAccess, getProtection: () => ContactProtection, clock = () => new Date()) {
+export function createDoctorAppointmentsService(db: ApplicationDatabase, access: ClinicAccess, getProtection: () => ContactProtection, clock = () => new Date()) {
   async function view(headers: Headers, selectedDate?: string): Promise<DoctorAppointmentsView> {
-    await access.requireAdminAccess(headers);
+    const principal = await access.requireClinicAccess(headers);
     const requested = doctorDateSchema.parse(selectedDate);
     return db.transaction(async (tx) => {
       const config = await readClinicConfiguration(tx);
@@ -29,7 +31,8 @@ export function createDoctorAppointmentsService(db: ApplicationDatabase, access:
       return { configured: true, date, timezone: config.timezone, appointments: rows.map((row) => ({
         id: row.id, startsAt: row.startsAt.toISOString(), endsAt: row.endsAt.toISOString(), bookedTimezone: row.timezone,
         status: row.status, patientCancellationLate: row.patientCancellationLate, contact: protection!.decrypt(row.id, row.contactCiphertext),
-        canCancel: row.status === "confirmed" && row.startsAt > now,
+        canCancel: (principal.role === "admin" || row.source === "clinic") && row.status === "confirmed" && row.startsAt > now,
+        canManageCancellationDetails: principal.role === "admin",
         cancellation: row.cancelledByStaffId ? { reason: row.cancellationReason!, rebookingInstruction: row.rebookingInstruction!,
           originalTimeBlocked: row.originalTimeBlocked, cancelledAt: row.cancelledAt!.toISOString() } : null,
       })) };
@@ -37,20 +40,25 @@ export function createDoctorAppointmentsService(db: ApplicationDatabase, access:
   }
 
   async function cancel(headers: Headers, input: unknown): Promise<CancellationReceipt> {
-    const principal = await access.requireAdminAccess(headers);
+    const principal = await access.requireClinicAccess(headers);
     const value = doctorCancellationSchema.parse(input);
     return db.transaction(async (tx) => {
       const [doctor] = await tx.select({ id: doctorProfile.id }).from(doctorProfile).where(eq(doctorProfile.id, 1)).for("update");
       if (!doctor) throw new BookingError(404, "APPOINTMENT_NOT_FOUND", "This appointment was not found.");
       // Recheck using this transaction connection after waiting for the shared lock.
-      const [current] = await tx.select({ id: staffSession.id }).from(staffSession)
+      const [current] = await tx.select({ role: staffAccess.role }).from(staffSession)
         .innerJoin(staffAccess, eq(staffAccess.userId, staffSession.userId))
         .where(and(eq(staffSession.id, principal.sessionId), eq(staffSession.userId, principal.userId),
-          gt(staffSession.expiresAt, sql`clock_timestamp()`), eq(staffAccess.active, true), eq(staffAccess.role, "admin")));
-      if (!current) throw new BookingError(403, "ACCESS_DENIED", "Active admin access is required. Sign in again.");
+          gt(staffSession.expiresAt, sql`clock_timestamp()`), eq(staffAccess.active, true)));
+      if (!current || !["admin", "staff"].includes(current.role)) throw new BookingError(403, "ACCESS_DENIED", "Active clinic access is required. Sign in again.");
       const [appointment] = await tx.select().from(appointments)
         .where(and(eq(appointments.id, value.appointmentId), eq(appointments.doctorId, 1))).for("update");
       if (!appointment) throw new BookingError(404, "APPOINTMENT_NOT_FOUND", "This appointment was not found.");
+      // Use the current database role, not the role captured before a lock wait.
+      if (current.role !== "admin") {
+        if (appointment.source !== "clinic") throw new BookingError(403, "ACCESS_DENIED", "Staff can only cancel clinic-created appointments.");
+        if (value.blockOriginalTime || value.rebookingInstruction) throw new BookingError(403, "ACCESS_DENIED", "Only the admin can block time or add rebooking instructions.");
+      }
       const receipt: CancellationReceipt = { id: appointment.id, status: "cancelled" };
       if (appointment.status === "cancelled") {
         if (appointment.cancelledByStaffId === principal.userId && appointment.cancellationReason === value.reason &&

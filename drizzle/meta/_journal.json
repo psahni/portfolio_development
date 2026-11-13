@@ -64,6 +64,13 @@
       "when": 1794408633147,
       "tag": "0008_whatsapp_phase_one",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794549914376,
+      "tag": "0009_local_booking_email",
+      "breakpoints": true
     }
   ]
 }

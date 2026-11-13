@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type Props = { id: string; name: string; date: string; time: string; timezone: string };
+type Props = { id: string; name: string; date: string; time: string; timezone: string; canManageDetails: boolean };
 const subscribeToHydration = () => () => {};
 
 function containFocus(event: KeyboardEvent<HTMLDialogElement>) {
@@ -17,7 +17,7 @@ function containFocus(event: KeyboardEvent<HTMLDialogElement>) {
   else if (!event.shiftKey && (index < 0 || index === controls.length - 1)) { event.preventDefault(); controls[0]?.focus(); }
 }
 
-export function DoctorCancellation({ id, name, date, time, timezone }: Props) {
+export function DoctorCancellation({ id, name, date, time, timezone, canManageDetails }: Props) {
   // The date filter performs a document navigation. Keep its server-rendered
   // cancellation control disabled until the dialog's client handlers are ready.
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
@@ -44,7 +44,7 @@ export function DoctorCancellation({ id, name, date, time, timezone }: Props) {
     inFlight.current = true; setPending(true); setError("");
     // Freeze the exact request after an uncertain response. A retry must not
     // silently change whether the original time is blocked or why it was cancelled.
-    const body = payload.current ?? JSON.stringify({ appointmentId: id, reason, rebookingInstruction: instruction, blockOriginalTime: block });
+    const body = payload.current ?? JSON.stringify({ appointmentId: id, reason, rebookingInstruction: canManageDetails ? instruction : "", blockOriginalTime: canManageDetails && block });
     payload.current = body;
     try {
       const response = await fetch("/api/admin/appointments", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" }, body });
@@ -71,9 +71,9 @@ export function DoctorCancellation({ id, name, date, time, timezone }: Props) {
       <form onSubmit={(event) => void cancel(event)} className="space-y-4" aria-busy={pending}>
         <label className="block text-sm font-medium">Cancellation reason<input className="ui-input mt-2 block w-full" value={reason} onChange={(event) => setReason(event.target.value)} required maxLength={160} disabled={frozen} /></label>
         <p className="ui-hint">Use a short nonclinical reason. Do not enter medical details.</p>
-        <label className="block text-sm font-medium">Rebooking instruction (optional)<input className="ui-input mt-2 block w-full" value={instruction} onChange={(event) => setInstruction(event.target.value)} maxLength={300} disabled={frozen} /></label>
-        <label className="flex items-start gap-3 text-sm"><input className="mt-1" type="checkbox" checked={block} onChange={(event) => setBlock(event.target.checked)} disabled={frozen} /><span>Block the original time, including its booked preparation buffers</span></label>
-        <p id={`doctor-cancel-help-${id}`} className="ui-hint">The cancelled visit will stay in history. Rebooking instructions do not reserve a time. Automatic patient notices are not enabled; contact the patient to explain the change.</p>
+        {canManageDetails && <><label className="block text-sm font-medium">Rebooking instruction (optional)<input className="ui-input mt-2 block w-full" value={instruction} onChange={(event) => setInstruction(event.target.value)} maxLength={300} disabled={frozen} /></label>
+        <label className="flex items-start gap-3 text-sm"><input className="mt-1" type="checkbox" checked={block} onChange={(event) => setBlock(event.target.checked)} disabled={frozen} /><span>Block the original time, including its booked preparation buffers</span></label></>}
+        <p id={`doctor-cancel-help-${id}`} className="ui-hint">The cancelled visit will stay in the Cancelled tab. {canManageDetails ? "Rebooking instructions do not reserve a time." : "The appointment time will be released."} Automatic patient notices are not enabled; contact the patient to explain the change.</p>
         {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         {accessDenied && <Link href="/admin" className="block text-sm text-primary underline">Sign in again</Link>}
         <div className="flex flex-wrap gap-3 pt-2"><Button type="button" variant="outline" disabled={pending} onClick={close}>{uncertain ? "Close and refresh" : "Keep appointment"}</Button><Button type="submit" disabled={pending || accessDenied} className="border-red-700 bg-red-700 text-white hover:bg-red-800">{pending ? "Cancelling…" : error ? "Retry cancellation" : "Cancel appointment"}</Button></div>
