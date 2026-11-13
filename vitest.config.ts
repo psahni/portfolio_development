@@ -7,6 +7,10 @@ const alias = {
 };
 
 export default defineConfig({
+  coverage: {
+    include: ["src/**/*.{ts,tsx}"],
+    exclude: ["src/**/*.d.ts"],
+  },
   test: {
     projects: [
       { resolve: { alias }, test: { name: "unit", include: ["tests/unit/**/*.test.ts"] } },
