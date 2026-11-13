@@ -10,7 +10,9 @@ The MVP includes native patient booking and an admin/staff interface. PostgreSQL
 
 **Approved local addition (#39):** Staff/admin booking confirmation email template and redacted simulated-delivery log after commit, as a localhost development/test fallback when `SMTP_HOST` is absent or blank. Real delivery and sign-in mail (#12) remain deferred.
 
-**Current approved slice:** #8 receptionist booking and daily agenda: active admin/staff create appointments through the shared booking service and read `/admin/appointments`; cancellation remains admin-only. Implemented on this review branch; staff management #4 is merged in PR #37. WhatsApp #15 Phase 1 is merged; the post-integration review is recorded in PR #36. Production/dynamic recipients, webhooks, reminders and cancellation messages remain deferred.
+**Approved cancellation addition (#40):** Any active staff can cancel any future confirmed clinic-created appointment, with a required nonclinical reason; admin-only blocking/rebooking instructions and patient-created cancellation remain enforced. Add date-preserving Confirmed/Cancelled agenda tabs and retain other status history. No cancellation notifications in this slice.
+
+**Current approved slice:** #8 receptionist booking and daily agenda: active admin/staff create appointments through the shared booking service and read `/admin/appointments`; staff may cancel future confirmed clinic-created appointments with a required reason; patient-created cancellation and blocking remain admin-only. Implemented on this review branch; staff management #4 is merged in PR #37. WhatsApp #15 Phase 1 is merged; the post-integration review is recorded in PR #36. Production/dynamic recipients, webhooks, reminders and cancellation messages remain deferred.
 
 **Delivery priority:** Complete working features one approved task at a time. Keep essential access checks, input validation and credential protection; defer sophisticated security infrastructure to the separate M6 security-hardening task.
 

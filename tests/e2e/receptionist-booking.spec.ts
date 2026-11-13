@@ -40,7 +40,7 @@ async function review(page: Page) {
 }
 async function count() { return withDatabase(async (db) => (await db.query("SELECT count(*)::int AS count FROM appointments")).rows[0].count as number); }
 
-test("mobile receptionist books after review and sees agenda without cancellation or patient auto-linking", async ({ page }) => {
+test("mobile receptionist books, cancels with a reason and switches dated status tabs without patient auto-linking", async ({ page }, testInfo) => {
   await seedClinic(); await page.setViewportSize({ width: 390, height: 844 }); await login(page);
   for (const name of ["Staff navigation", "Clinic settings navigation", "Availability navigation", "Calendar navigation"]) await expect(page.getByRole("link", { name, exact: true })).toHaveCount(0);
   await choose(page); await page.getByRole("button", { name: "Review booking", exact: true }).click();
@@ -54,7 +54,34 @@ test("mobile receptionist books after review and sees agenda without cancellatio
   await page.getByRole("link", { name: "View daily agenda" }).click();
   await expect(page.getByRole("heading", { name: "Reception Visitor" })).toBeVisible();
   await expect(page.getByText("Confirmed", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Cancel/ })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Confirmed (1)", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("button", { name: "Cancel appointment", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Cancel this appointment?", exact: true });
+  await expect(dialog.getByRole("checkbox")).toHaveCount(0);
+  await expect(dialog.getByLabel("Rebooking instruction (optional)", { exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Cancel appointment", exact: true }).click();
+  expect(await withDatabase(async (db) => (await db.query("SELECT status FROM appointments")).rows[0].status)).toBe("confirmed");
+  await dialog.getByLabel("Cancellation reason", { exact: true }).fill("Patient requested cancellation");
+  await dialog.getByRole("button", { name: "Cancel appointment", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByText("No confirmed appointments for this date.", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Cancelled (1)", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`date=${day()}&status=cancelled`));
+  await expect(page.getByRole("list", { name: "Clinic appointments", exact: true })).toContainText("Cancellation reason: Patient requested cancellation");
+  await page.screenshot({ path: testInfo.outputPath("mobile-staff-cancelled-tab.png") });
+  await page.getByRole("button", { name: "Refresh appointments", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Cancelled (1)", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Cancelled (1)", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.getByLabel("Appointment date", { exact: true }).fill("2020-01-01");
+  await page.getByRole("button", { name: "Show appointments", exact: true }).click();
+  await expect(page).toHaveURL(/date=2020-01-01.*status=cancelled|status=cancelled.*date=2020-01-01/);
+  await expect(page.getByRole("tab", { name: "Cancelled (0)", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Cancelled (0)", exact: true }).focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("tab", { name: "Confirmed (0)", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.getByLabel("Appointment date", { exact: true }).fill(day());
+  await page.getByRole("button", { name: "Show appointments", exact: true }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await withDatabase(async (db) => {
     const { rows } = await db.query("SELECT source, patient_user_id, created_by_staff_id FROM appointments");
@@ -136,4 +163,35 @@ test("confirmation and agenda use the committed timezone after settings change d
   await expect(page.getByLabel("Appointment date", { exact: true })).toHaveValue(day());
   await expect(page.getByRole("heading", { name: "Reception Visitor" })).toBeVisible();
   await expect(page.getByText("Clinic timezone: UTC.", { exact: false })).toBeVisible();
+});
+
+
+test("staff cancels an admin-created visit with exact retry after a lost response", async ({ page }) => {
+  await seedClinic(); await login(page, true); await choose(page); await review(page);
+  await page.getByRole("button", { name: "Confirm booking", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Appointment confirmed" })).toBeVisible();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await login(page);
+  await page.goto(`/admin/appointments?date=${day()}`);
+  await page.getByRole("button", { name: "Cancel appointment", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Cancel this appointment?", exact: true });
+  await dialog.getByLabel("Cancellation reason", { exact: true }).fill("Patient called the clinic");
+  const bodies: string[] = [];
+  await page.route("**/api/admin/appointments", async (route) => {
+    bodies.push(route.request().postData()!);
+    if (bodies.length === 1) { await route.fetch(); await route.abort("failed"); }
+    else await route.continue();
+  });
+  await dialog.getByRole("button", { name: "Cancel appointment", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Cancellation could not be checked");
+  await expect(dialog.getByLabel("Cancellation reason", { exact: true })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Retry cancellation", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await page.getByRole("tab", { name: "Cancelled (1)", exact: true }).click();
+  await expect(page.getByRole("list", { name: "Clinic appointments", exact: true })).toContainText("Cancellation reason: Patient called the clinic");
+  expect(bodies).toHaveLength(2); expect(bodies[0]).toBe(bodies[1]);
+  await withDatabase(async (db) => {
+    expect((await db.query("SELECT count(*)::int AS count FROM booking_audit WHERE action='cancelled'")).rows[0].count).toBe(1);
+    expect((await db.query("SELECT count(*)::int AS count FROM reservations")).rows[0].count).toBe(0);
+  });
 });

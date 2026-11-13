@@ -362,8 +362,8 @@ describe("doctor appointment list and basic cancellation", () => {
   it.each(["revoked", "expired", "disabled", "demoted"])("rechecks a %s admin after the doctor lock wait", async (state) => {
     const booked = await service.bookPatient(credentials.patient, input());
     let passed!: () => void; const authenticated = new Promise<void>((resolve) => { passed = resolve; });
-    const guarded = createDoctorAppointmentsService(database.db, { ...identity.access, async requireAdminAccess(headers) {
-      const principal = await identity.access.requireAdminAccess(headers); passed(); return principal;
+    const guarded = createDoctorAppointmentsService(database.db, { ...identity.access, async requireClinicAccess(headers) {
+      const principal = await identity.access.requireClinicAccess(headers); passed(); return principal;
     } }, () => protection, clock);
     const blocker = await database.pool.connect(); let pending: Promise<unknown> | undefined;
     try {
@@ -1296,7 +1296,7 @@ describe("clinic booking endpoints and receptionist agenda", () => {
     expect(saved).toMatchObject({ id: receipt.id, source: "clinic", patientUserId: null, createdByStaffId: role === "admin" ? adminId : staffId });
     expect(saved.contactCiphertext).not.toContain(adminEmail);
     const agenda = await doctorService().view(credentials[role], date);
-    expect(agenda.appointments[0]).toMatchObject({ id: receipt.id, canCancel: role === "admin", contact: { name: value.name, email: adminEmail, phone: "+919876543210" } });
+    expect(agenda.appointments[0]).toMatchObject({ id: receipt.id, canCancel: true, contact: { name: value.name, email: adminEmail, phone: "+919876543210" } });
     const patientList = await createPatientAppointmentsService(database.db, identity.patientAccess, clock).view(credentials.patient);
     expect(JSON.stringify(patientList)).not.toContain(receipt.id);
     const updated = await (await times()(httpRequest(`booking-availability?date=${date}`, role))).json();
@@ -1335,13 +1335,13 @@ describe("clinic booking endpoints and receptionist agenda", () => {
       expect([401, 403]).toContain(response.status);
     expect(await counts()).toEqual([1, 1, 1, 1]);
   });
-  it("keeps cancellation, settings and availability editing admin-only", async () => {
+  it("allows staff cancellation of clinic bookings while keeping settings and availability editing admin-only", async () => {
     const { receipt } = await (await handler()(httpRequest("bookings", "staff", clinicInput()))).json();
-    expect((await doctorHandler()(httpRequest("appointments", "staff", doctorInput(receipt.id)))).status).toBe(403);
+    expect((await doctorHandler()(httpRequest("appointments", "staff", { appointmentId: receipt.id, reason: "Patient requested cancellation" }))).status).toBe(200);
     await expect(clinic.save(credentials.staff, configuration())).rejects.toMatchObject({ statusCode: 403 });
     await expect(schedule.addBreak(credentials.staff, { date, start: "10:00", end: "10:20" })).rejects.toMatchObject({ statusCode: 403 });
     expect((await doctorService().view(credentials.staff, date)).appointments[0].canCancel).toBe(false);
-    expect(await counts()).toEqual([1, 1, 1, 1]);
+    expect(await counts()).toEqual([1, 0, 2, 1]);
   });
   it("rejects forged origins and fields, malformed JSON and wrong methods", async () => {
     for (const origin of [null, "https://forged.example"]) expect((await handler()(httpRequest("bookings", "staff", clinicInput(), origin))).status).toBe(403);
@@ -1463,5 +1463,90 @@ describe("local clinic booking email simulation", () => {
     }
     await integrated.bookForClinic(credentials.staff, value);
     expect(await database.db.select().from(localBookingEmails)).toHaveLength(1);
+  });
+});
+
+
+describe("staff cancellation of clinic-created appointments", () => {
+  const value = (id: string) => ({ appointmentId: id, reason: "Patient requested cancellation" });
+  it.each(["admin", "staff"])("allows staff to cancel a booking created by %s, with reason and one audit", async (creator) => {
+    const booked = await service.bookForClinic(credentials[creator], clinicInput());
+    expect((await doctorService().view(credentials.staff, date)).appointments[0]).toMatchObject({ canCancel: true, canManageCancellationDetails: false });
+    expect((await doctorService().view(credentials.admin, date)).appointments[0].canManageCancellationDetails).toBe(true);
+    const response = await doctorHandler()(httpRequest("appointments", "staff", { ...value(booked.id), reason: "  Patient requested cancellation  " }));
+    expect(response.status).toBe(200);
+    expect(await doctorService().cancel(credentials.staff, value(booked.id))).toEqual({ id: booked.id, status: "cancelled" });
+    expect(await counts()).toEqual([1, 0, 2, 1]);
+    expect((await database.db.select().from(appointments))[0]).toMatchObject({ status: "cancelled", cancelledByStaffId: staffId, cancellationReason: value(booked.id).reason, originalTimeBlocked: false, patientCancelledAt: null, patientCancellationLate: null });
+    expect((await database.db.select().from(bookingAudit).where(eq(bookingAudit.action, "cancelled")))[0]).toMatchObject({ actorKind: "staff", actorId: staffId });
+    await expect(doctorService().cancel(credentials.staff, { ...value(booked.id), reason: "Different reason" })).rejects.toMatchObject({ code: "CANCELLATION_CONFLICT" });
+  });
+  it("allows another staff member to cancel, and denies patient-created bookings even with matching contact", async () => {
+    const booked = await service.bookForClinic(credentials.staff, clinicInput());
+    const otherStaffId = randomUUID();
+    await database.db.insert(staffUser).values({ id: otherStaffId, name: "Another Staff", email: `${otherStaffId}@example.test` });
+    await database.db.insert(staffAccess).values({ userId: otherStaffId, role: "staff" });
+    await database.db.update(appointments).set({ createdByStaffId: otherStaffId }).where(eq(appointments.id, booked.id));
+    await doctorService().cancel(credentials.staff, value(booked.id));
+    const patient = await service.bookPatient(credentials.patient, input());
+    expect((await doctorService().view(credentials.staff, date)).appointments.find((a) => a.id === patient.id)?.canCancel).toBe(false);
+    await expect(doctorService().cancel(credentials.staff, value(patient.id))).rejects.toMatchObject({ statusCode: 403 });
+    expect((await database.db.select().from(appointments).where(eq(appointments.id, patient.id)))[0].status).toBe("confirmed");
+  });
+  it.each([{ reason: "" }, { reason: "   " }, { reason: "x".repeat(161) }, { reason: "line\nbreak" }, { source: "clinic" }, { cancelledByStaffId: "forged" }])("rejects invalid reason or forged fields (%j)", async (extra) => {
+    const booked = await service.bookForClinic(credentials.staff, clinicInput());
+    expect((await doctorHandler()(httpRequest("appointments", "staff", { ...value(booked.id), ...extra }))).status).toBe(400);
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+  it.each([{ blockOriginalTime: true }, { rebookingInstruction: "Try tomorrow" }])("rejects staff admin-only options (%j)", async (extra) => {
+    const booked = await service.bookForClinic(credentials.staff, clinicInput());
+    expect((await doctorHandler()(httpRequest("appointments", "staff", { ...value(booked.id), ...extra }))).status).toBe(403);
+    expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+  it.each(["started", "completed", "no_show"])("rejects %s clinic visits", async (state) => {
+    const booked = await service.bookForClinic(credentials.staff, clinicInput());
+    if (state === "started") now = new Date(booked.startsAt);
+    else await database.db.update(appointments).set({ status: state as "completed" | "no_show" }).where(eq(appointments.id, booked.id));
+    await expect(doctorService().cancel(credentials.staff, value(booked.id))).rejects.toMatchObject({ code: "CANCELLATION_NOT_ALLOWED" });
+    expect((await doctorService().view(credentials.staff, date)).appointments[0].canCancel).toBe(false);
+  });
+  it.each(["disabled", "revoked", "expired"])("rechecks %s staff after the shared lock wait", async (state) => {
+    const booked = await service.bookForClinic(credentials.admin, clinicInput());
+    let passed!: () => void; const authenticated = new Promise<void>((resolve) => { passed = resolve; });
+    const guarded = createDoctorAppointmentsService(database.db, { async requireClinicAccess(headers) {
+      const principal = await identity.access.requireClinicAccess(headers); passed(); return principal;
+    } }, () => protection, clock);
+    const blocker = await database.pool.connect(); let pending: Promise<unknown> | undefined;
+    try {
+      await blocker.query("BEGIN"); await blocker.query("SELECT id FROM doctor_profile WHERE id = 1 FOR UPDATE");
+      pending = guarded.cancel(credentials.staff, value(booked.id));
+      const rejected = expect(pending).rejects.toMatchObject({ statusCode: 403 }); await authenticated;
+      if (state === "disabled") await database.db.update(staffAccess).set({ active: false }).where(eq(staffAccess.userId, staffId));
+      if (state === "revoked") await database.db.delete(staffSession).where(eq(staffSession.userId, staffId));
+      if (state === "expired") await database.db.update(staffSession).set({ expiresAt: new Date(0) }).where(eq(staffSession.userId, staffId));
+      await blocker.query("COMMIT"); await rejected;
+      expect(await counts()).toEqual([1, 1, 1, 1]);
+    } finally { await blocker.query("ROLLBACK"); blocker.release(); await pending?.catch(() => {}); }
+  });
+  it("deduplicates concurrent staff cancellations without touching a replacement booking", async () => {
+    const booked = await service.bookForClinic(credentials.admin, clinicInput());
+    await Promise.all(Array.from({ length: 4 }, () => doctorService().cancel(credentials.staff, value(booked.id))));
+    const replacement = await service.bookForClinic(credentials.admin, clinicInput());
+    await doctorService().cancel(credentials.staff, value(booked.id));
+    expect((await database.db.select().from(appointments).where(eq(appointments.id, replacement.id)))[0].status).toBe("confirmed");
+    expect(await counts()).toEqual([2, 1, 3, 2]);
+  });
+  it.each([false, true])("rolls back staff cancellation and occupancy on audit failure (deferred=%s)", async (deferred) => {
+    const booked = await service.bookForClinic(credentials.staff, clinicInput());
+    await database.db.execute(sql`CREATE FUNCTION reject_staff_cancel() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'private failure'; END $$`);
+    await database.db.execute(sql.raw(`CREATE ${deferred ? "CONSTRAINT" : ""} TRIGGER reject_staff_cancel ${deferred ? "AFTER" : "BEFORE"} INSERT ON booking_audit ${deferred ? "DEFERRABLE INITIALLY DEFERRED" : ""} FOR EACH ROW WHEN (NEW.action = 'cancelled') EXECUTE FUNCTION reject_staff_cancel()`));
+    try {
+      expect((await doctorHandler()(httpRequest("appointments", "staff", value(booked.id)))).status).toBe(503);
+      expect(await counts()).toEqual([1, 1, 1, 1]);
+      expect((await database.db.select().from(appointments))[0]).toMatchObject({ status: "confirmed", cancelledByStaffId: null, cancellationReason: null });
+    } finally {
+      await database.db.execute(sql`DROP TRIGGER reject_staff_cancel ON booking_audit`);
+      await database.db.execute(sql`DROP FUNCTION reject_staff_cancel()`);
+    }
   });
 });

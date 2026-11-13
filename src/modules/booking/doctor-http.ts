@@ -15,7 +15,7 @@ export function createDoctorAppointmentsHandler(getService: () => ReturnType<typ
       const input: unknown = await request.json();
       return respond({ appointment: await getService().cancel(request.headers, input) });
     } catch (error) {
-      if (isAPIError(error) && (error.status === "UNAUTHORIZED" || error.status === "FORBIDDEN")) return respond({ error: request.method === "GET" ? "Active clinic access is required. Sign in again." : "Admin access is required. Sign in again." }, error.statusCode);
+      if (isAPIError(error) && (error.status === "UNAUTHORIZED" || error.status === "FORBIDDEN")) return respond({ error: "Active clinic access is required. Sign in again." }, error.statusCode);
       if (error instanceof BookingError) return respond({ code: error.code, error: error.message }, error.statusCode);
       if (error instanceof SchedulingError) return respond({ error: error.message }, error.statusCode);
       if (error instanceof ZodError) return respond({ error: error.issues[0].message }, 400);

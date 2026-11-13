@@ -6,6 +6,9 @@ const note = (max: number) => z.string().trim().max(max).refine((value) =>
   !Array.from(value).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127), "Use a short note without control characters.");
 
 export const doctorDateSchema = dateSchema.refine((value) => value >= "0001-01-01" && value <= "9999-12-31", "Choose a date between years 1 and 9999.").optional();
+export const appointmentTabSchema = z.enum(["confirmed", "cancelled", "history"]).catch("confirmed");
+export type AppointmentTab = z.infer<typeof appointmentTabSchema>;
+
 export const doctorCancellationSchema = z.object({
   appointmentId: z.uuid(),
   reason: note(160).pipe(z.string().min(1, "Enter a short nonclinical reason.")),
@@ -17,7 +20,7 @@ export type DoctorAppointment = {
   id: string; startsAt: string; endsAt: string; bookedTimezone: string;
   status: "confirmed" | "cancelled" | "completed" | "no_show";
   patientCancellationLate: boolean | null;
-  contact: PatientContact; canCancel: boolean;
+  contact: PatientContact; canCancel: boolean; canManageCancellationDetails: boolean;
   cancellation: { reason: string; rebookingInstruction: string; originalTimeBlocked: boolean; cancelledAt: string } | null;
 };
 export type DoctorAppointmentsView = {

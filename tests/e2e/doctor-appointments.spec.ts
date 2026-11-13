@@ -66,6 +66,7 @@ test("doctor reviews contacts, abandons cancellation by keyboard and cancels wit
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("mobile-doctor-cancellation.png") });
   await modal(page).getByRole("button", { name: "Cancel appointment", exact: true }).click();
+  await page.getByRole("tab", { name: "Cancelled (1)", exact: true }).click();
   await expect(page.getByRole("list", { name: "Clinic appointments", exact: true })).toContainText("Cancelled");
   await expect(page.getByRole("list", { name: "Clinic appointments", exact: true })).toContainText("Cancellation reason: Doctor unavailable");
   const saved = await state(booked.id);
@@ -104,6 +105,7 @@ test("doctor sees empty dates, required reason and conflicts from a visit comple
   await modal(page).getByRole("button", { name: "Cancel appointment", exact: true }).click();
   await expect(modal(page).getByRole("alert")).toContainText("Only confirmed appointments that have not started");
   await modal(page).getByRole("button", { name: "Keep appointment", exact: true }).click(); await page.getByRole("button", { name: "Refresh appointments", exact: true }).click();
+  await page.getByRole("tab", { name: "Other history (1)", exact: true }).click();
   await expect(page.getByRole("list", { name: "Clinic appointments", exact: true })).toContainText("Completed"); await expect(page.getByRole("button", { name: "Cancel appointment", exact: true })).toHaveCount(0);
   await page.getByLabel("Appointment date", { exact: true }).fill("2020-01-01"); await page.getByRole("button", { name: "Show appointments", exact: true }).click();
   await expect(page.getByText("No appointments for this date.", { exact: true })).toBeVisible();
@@ -113,7 +115,7 @@ test("a revoked admin cannot submit from an already open confirmation", async ({
   const booked = await setup(page); await open(page); await modal(page).getByLabel("Cancellation reason", { exact: true }).fill("Doctor unavailable");
   await withDatabase(async (db) => { await db.query("DELETE FROM staff_auth.session WHERE user_id=(SELECT user_id FROM staff_access WHERE role='admin')"); });
   await modal(page).getByRole("button", { name: "Cancel appointment", exact: true }).click();
-  await expect(modal(page).getByRole("alert")).toContainText("Admin access is required"); await expect(modal(page).getByRole("link", { name: "Sign in again", exact: true })).toHaveAttribute("href", "/admin");
+  await expect(modal(page).getByRole("alert")).toContainText("Active clinic access is required"); await expect(modal(page).getByRole("link", { name: "Sign in again", exact: true })).toHaveAttribute("href", "/admin");
   expect((await state(booked.id)).appointment.status).toBe("confirmed");
 });
 
@@ -124,4 +126,16 @@ test("anonymous visitors cannot open appointments; staff and admin get setup gui
   expect((await page.request.get("/api/admin/appointments")).status()).toBe(200);
   await page.getByRole("button", { name: "Sign out", exact: true }).click(); await expect(page).toHaveURL(/\/admin$/);
   await signIn(page); await page.goto("/admin/appointments"); await expect(page.getByText("Set up your clinic first", { exact: true })).toBeVisible();
+});
+
+
+test("staff can read patient-created visits but cannot cancel them", async ({ page }) => {
+  const booked = await setup(page);
+  await page.getByRole("button", { name: "Sign out", exact: true }).click(); await signIn(page, true);
+  await page.goto(`/admin/appointments?date=${day()}`);
+  await expect(page.getByRole("heading", { name: "Synthetic Doctor-list Patient", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel appointment", exact: true })).toHaveCount(0);
+  const response = await page.request.post("/api/admin/appointments", { headers: { origin: new URL(page.url()).origin }, data: { appointmentId: booked.id, reason: "Patient requested cancellation" } });
+  expect(response.status()).toBe(403);
+  expect((await state(booked.id)).appointment.status).toBe("confirmed");
 });
