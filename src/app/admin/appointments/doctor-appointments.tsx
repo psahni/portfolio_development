@@ -1,16 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useTransition, type KeyboardEvent } from "react";
+import { useSyncExternalStore, useTransition, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AppointmentTab, DoctorAppointmentsView } from "@/modules/booking/doctor-models";
 import { DoctorCancellation } from "./doctor-cancellation";
 
+const subscribeToHydration = () => () => {};
 const statuses = { confirmed: "Confirmed", cancelled: "Cancelled", completed: "Completed", no_show: "Not attended" };
 
 export function DoctorAppointments({ initial, selectedTab }: { initial: DoctorAppointmentsView; selectedTab: AppointmentTab }) {
+  // Date submission performs a document navigation; enable client-only actions
+  // after their handlers hydrate, matching the cancellation dialog control.
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const router = useRouter(), [refreshing, startTransition] = useTransition();
   const time = (value: string) => new Intl.DateTimeFormat("en-US", { timeZone: initial.timezone, hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(value));
   const date = (value: string) => new Intl.DateTimeFormat("en-US", { timeZone: initial.timezone, weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(new Date(value));
@@ -29,10 +33,10 @@ export function DoctorAppointments({ initial, selectedTab }: { initial: DoctorAp
   return <div className="max-w-5xl space-y-5">
     <div className="ui-panel flex flex-wrap items-end justify-between gap-4">
       <form method="get" className="flex flex-wrap items-end gap-3"><input type="hidden" name="status" value={selectedTab} /><label className="block text-sm font-medium">Appointment date<input name="date" aria-label="Appointment date" type="date" required defaultValue={initial.date} key={initial.date} min="0001-01-01" max="9999-12-31" className="ui-input mt-2 block" /></label><Button type="submit">Show appointments</Button></form>
-      <Button type="button" variant="outline" onClick={() => startTransition(() => router.refresh())} disabled={refreshing}><RefreshCw aria-hidden="true" className="size-4" />{refreshing ? "Refreshing…" : "Refresh appointments"}</Button>
+      <Button type="button" variant="outline" onClick={() => startTransition(() => router.refresh())} disabled={!hydrated || refreshing}><RefreshCw aria-hidden="true" className="size-4" />{refreshing ? "Refreshing…" : "Refresh appointments"}</Button>
       <p className="w-full text-xs text-muted-foreground">Clinic timezone: {initial.timezone}. Cancelled visits appear in the Cancelled tab on their original appointment date.</p>
     </div>
-    <nav role="tablist" aria-label="Appointment status" onKeyDown={switchTab} className="flex flex-wrap gap-1 border-b pb-1">
+    <nav role="tablist" aria-busy={!hydrated} aria-label="Appointment status" onKeyDown={switchTab} className="flex flex-wrap gap-1 border-b pb-1">
       {tabs.map((tab) => <Link key={tab.id} id={`appointments-${tab.id}`} role="tab" aria-selected={selectedTab === tab.id} aria-controls="appointment-status-panel" tabIndex={selectedTab === tab.id ? 0 : -1}
         href={`/admin/appointments?${new URLSearchParams({ date: initial.date, status: tab.id })}`} scroll={false}
         className={`rounded-t-lg px-4 py-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-primary ${selectedTab === tab.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>

@@ -77,6 +77,7 @@ test("mobile receptionist books, cancels with a reason and switches dated status
   await page.getByRole("button", { name: "Show appointments", exact: true }).click();
   await expect(page).toHaveURL(/date=2020-01-01.*status=cancelled|status=cancelled.*date=2020-01-01/);
   await expect(page.getByRole("tab", { name: "Cancelled (0)", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tablist", { name: "Appointment status", exact: true })).toHaveAttribute("aria-busy", "false");
   await page.getByRole("tab", { name: "Cancelled (0)", exact: true }).focus();
   await page.keyboard.press("ArrowLeft");
   await expect(page.getByRole("tab", { name: "Confirmed (0)", exact: true })).toHaveAttribute("aria-selected", "true");
