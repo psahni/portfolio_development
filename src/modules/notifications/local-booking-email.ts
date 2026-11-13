@@ -6,14 +6,12 @@ import type { BookingEvents } from "@/modules/booking/events";
 import type { BookingReceipt } from "@/modules/booking/models";
 
 export function localBookingEmailEnabled(source: Record<string, string | undefined> = process.env) {
-  if (!source.LOCAL_BOOKING_EMAIL || source.LOCAL_BOOKING_EMAIL === "false") return false;
-  if (source.LOCAL_BOOKING_EMAIL !== "true") throw new Error("Invalid LOCAL_BOOKING_EMAIL configuration.");
-  const url = new URL(source.APP_URL ?? "");
-  if (!["development", "test"].includes(source.NODE_ENV ?? "") ||
-      !["http:", "https:"].includes(url.protocol) || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || url.username || url.password) {
-    throw new Error("LOCAL_BOOKING_EMAIL requires localhost development/test.");
-  }
-  return true;
+  // SMTP_HOST is required for real SMTP; an empty value uses the local fallback.
+  if (source.SMTP_HOST?.trim() || !["development", "test"].includes(source.NODE_ENV ?? "")) return false;
+  try {
+    const url = new URL(source.APP_URL ?? "");
+    return ["http:", "https:"].includes(url.protocol) && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) && !url.username && !url.password;
+  } catch { return false; }
 }
 
 type EmailDetails = { clinicName: string; doctorName: string; email: string; phone: string };
@@ -40,6 +38,10 @@ export function createPostBookingLocalEmail(
   log: (message: string) => void = console.info,
 ) {
   return async (receipt: BookingReceipt) => {
+    if (source.SMTP_HOST?.trim()) {
+      console.warn("Appointment confirmed; email not sent: SMTP delivery is not implemented yet (SMTP_DELIVERY_UNAVAILABLE).");
+      return;
+    }
     if (!localBookingEmailEnabled(source)) return;
     // This is a second transaction, after the appointment commits. Its row lock
     // deduplicates concurrent retries. A failed log leaves the job pending.

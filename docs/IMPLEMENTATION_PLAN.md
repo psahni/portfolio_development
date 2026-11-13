@@ -8,7 +8,7 @@ Scope: **one clinic, one branch and one doctor**. Multiple clinics/branches are 
 
 The MVP includes native patient booking and an admin/staff interface. PostgreSQL owns bookings; Google Calendar is an optional outbound mirror.
 
-**Approved local addition (#39):** Staff/admin booking confirmation email template and redacted simulated-delivery log after commit, explicitly enabled on localhost development/test only. Real delivery and sign-in mail (#12) remain deferred.
+**Approved local addition (#39):** Staff/admin booking confirmation email template and redacted simulated-delivery log after commit, as a localhost development/test fallback when `SMTP_HOST` is absent or blank. Real delivery and sign-in mail (#12) remain deferred.
 
 **Current approved slice:** #8 receptionist booking and daily agenda: active admin/staff create appointments through the shared booking service and read `/admin/appointments`; cancellation remains admin-only. Implemented on this review branch; staff management #4 is merged in PR #37. WhatsApp #15 Phase 1 is merged; the post-integration review is recorded in PR #36. Production/dynamic recipients, webhooks, reminders and cancellation messages remain deferred.
 

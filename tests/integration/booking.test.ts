@@ -1,5 +1,5 @@
 import { localBookingEmails } from "@/db/schema/notifications";
-import { createPostBookingLocalEmail, localEmailBookingEvents } from "@/modules/notifications/local-booking-email";
+import { createPostBookingLocalEmail, localBookingEmailEnabled, localEmailBookingEvents } from "@/modules/notifications/local-booking-email";
 import { whatsappAttempts, whatsappConsents, whatsappNotifications } from "@/db/schema/notifications";
 import { whatsappBookingEvents } from "@/modules/notifications/booking-events";
 import { createPostBookingWhatsApp } from "@/modules/notifications/post-booking";
@@ -1387,7 +1387,7 @@ describe("clinic booking endpoints and receptionist agenda", () => {
 
 
 describe("local clinic booking email simulation", () => {
-  const source = { LOCAL_BOOKING_EMAIL: "true", NODE_ENV: "test", APP_URL: baseURL };
+  const source = { NODE_ENV: "test", APP_URL: baseURL };
   const withEmail = (enabled = true) => createBookingService(database.db, { ...identity.access, requirePatientAccess: createPatientBookingAccess(identity.patient) }, protection, clock, localEmailBookingEvents(enabled));
   it("logs only after commit, snapshots the template and deduplicates concurrent retries", async () => {
     const integrated = withEmail(), value = clinicInput();
@@ -1409,6 +1409,19 @@ describe("local clinic booking email simulation", () => {
     expect(log).toHaveBeenCalledTimes(1);
     expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({ event: "booking_email_simulated", delivery: "simulated email sent — no real email sent", body: job.body });
     expect((await database.db.select().from(localBookingEmails))[0].loggedAt).toBeInstanceOf(Date);
+  });
+  it("uses SMTP_HOST presence to disable simulation and reports deferred delivery safely", async () => {
+    const smtpSource = { ...source, SMTP_HOST: "smtp.example.test" };
+    const integrated = createBookingService(database.db, { ...identity.access, requirePatientAccess: createPatientBookingAccess(identity.patient) }, protection, clock, localEmailBookingEvents(localBookingEmailEnabled(smtpSource)));
+    const log = vi.fn(), warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const handler = createClinicBookingHandler(() => integrated, () => baseURL, createPostBookingLocalEmail(() => { throw new Error("must not connect"); }, smtpSource, log));
+      expect((await handler(httpRequest("bookings", "staff", clinicInput()))).status).toBe(200);
+      expect(await database.db.select().from(localBookingEmails)).toEqual([]);
+      expect(log).not.toHaveBeenCalled();
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining("SMTP_DELIVERY_UNAVAILABLE"));
+      expect(warning.mock.calls.flat().join(" ")).not.toContain(smtpSource.SMTP_HOST);
+    } finally { warning.mockRestore(); }
   });
   it("does not queue for patients or disabled mode", async () => {
     await withEmail().bookPatient(credentials.patient, input());

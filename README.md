@@ -117,7 +117,7 @@ Phase 2 covers production sender registration, dynamic patient recipients and fu
 
 ## Local clinic booking email preview
 
-Apply reviewed migration `0009_local_booking_email.sql` with `pnpm db:migrate`, then set `LOCAL_BOOKING_EMAIL=true` in `.env.local` and restart `pnpm dev`. It is disabled by default and rejects production/non-loopback `APP_URL` configuration. Only new admin/staff bookings queue a preview; patient bookings and existing appointments are unchanged. No provider is contacted.
+Apply reviewed migration `0009_local_booking_email.sql` with `pnpm db:migrate`, then leave `SMTP_HOST` unset or blank in `.env.local` and restart `pnpm dev`. The local preview is the fallback when no SMTP host is configured, and runs only in localhost development/test. A nonempty `SMTP_HOST` disables the preview. SMTP transport is still deferred: a configured host currently logs `SMTP_DELIVERY_UNAVAILABLE`, sends nothing and preserves the confirmed booking. Only new admin/staff bookings queue a preview; patient bookings and existing appointments are unchanged. No provider is contacted.
 
 After the appointment commits, the server terminal logs JSON with `event: "booking_email_simulated"`, `delivery: "simulated email sent — no real email sent"`, a redacted recipient, subject and message body. The message includes the booked local date/time/timezone, duration, reference and clinic contact instructions. Patient name/email/phone are omitted. This log confirms local simulation only; nothing reaches an inbox.
 
