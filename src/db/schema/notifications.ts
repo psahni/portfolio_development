@@ -38,3 +38,11 @@ export const whatsappAttempts = pgTable("whatsapp_attempts", {
 }, (t) => [unique("whatsapp_attempt_number").on(t.notificationId, t.number),
   check("whatsapp_attempt_status", sql`${t.status} in ('sending', 'accepted', 'failed', 'uncertain', 'suppressed')`),
   check("whatsapp_attempt_number_positive", sql`${t.number} between 1 and 3`)]);
+
+// Local-only preview jobs. No patient contacts or real delivery status are stored here.
+export const localBookingEmails = pgTable("local_booking_emails", {
+  appointmentId: uuid("appointment_id").primaryKey().references(() => appointments.id, { onDelete: "cascade" }),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  loggedAt: timestamp("logged_at", { withTimezone: true }),
+});

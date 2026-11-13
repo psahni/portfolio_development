@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import { SchedulingError } from "@/modules/scheduling/models";
 import type { createClinicBookingAvailability } from "./clinic-booking";
 import type { createBookingService } from "./service";
+import type { BookingReceipt } from "./models";
 import { BookingError } from "./models";
 
 const respond = (body: object, status = 200) => Response.json(body, {
@@ -19,7 +20,7 @@ function failure(error: unknown) {
   return respond({ error: "Booking could not be checked. Retry the same confirmation or check the agenda." }, 503);
 }
 
-export function createClinicBookingHandler(getService: () => ReturnType<typeof createBookingService>, getTrustedOrigin: () => string) {
+export function createClinicBookingHandler(getService: () => ReturnType<typeof createBookingService>, getTrustedOrigin: () => string, afterConfirmation: (receipt: BookingReceipt) => Promise<void> = async () => {}) {
   return async (request: Request) => {
     if (request.method !== "POST") return respond({ error: "Method not allowed." }, 405);
     try {
@@ -28,6 +29,8 @@ export function createClinicBookingHandler(getService: () => ReturnType<typeof c
       const input: unknown = await request.json();
       // Shared service resolves the clinic principal and commits before returning.
       const receipt = await getService().bookForClinic(request.headers, input);
+      try { await afterConfirmation(receipt); }
+      catch { console.warn("Appointment confirmed; local email simulation pending (LOCAL_EMAIL_FAILED). Retry the same confirmation to recover."); }
       return respond({ receipt });
     } catch (error) { return failure(error); }
   };

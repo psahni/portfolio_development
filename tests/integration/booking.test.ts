@@ -1,3 +1,5 @@
+import { localBookingEmails } from "@/db/schema/notifications";
+import { createPostBookingLocalEmail, localEmailBookingEvents } from "@/modules/notifications/local-booking-email";
 import { whatsappAttempts, whatsappConsents, whatsappNotifications } from "@/db/schema/notifications";
 import { whatsappBookingEvents } from "@/modules/notifications/booking-events";
 import { createPostBookingWhatsApp } from "@/modules/notifications/post-booking";
@@ -1380,5 +1382,73 @@ describe("clinic booking endpoints and receptionist agenda", () => {
     expect(response.status).toBe(503); expect(await response.text()).not.toContain("private key");
     await database.db.delete(clinicSettings);
     expect(await (await times()(httpRequest("booking-availability", "staff"))).json()).toMatchObject({ configured: false, slots: [] });
+  });
+});
+
+
+describe("local clinic booking email simulation", () => {
+  const source = { LOCAL_BOOKING_EMAIL: "true", NODE_ENV: "test", APP_URL: baseURL };
+  const withEmail = (enabled = true) => createBookingService(database.db, { ...identity.access, requirePatientAccess: createPatientBookingAccess(identity.patient) }, protection, clock, localEmailBookingEvents(enabled));
+  it("logs only after commit, snapshots the template and deduplicates concurrent retries", async () => {
+    const integrated = withEmail(), value = clinicInput();
+    const receipt = await integrated.bookForClinic(credentials.staff, value);
+    const [job] = await database.db.select().from(localBookingEmails);
+    expect(job.loggedAt).toBeNull();
+    expect(job.body).toContain("Booking Test");
+    await database.db.update(clinicSettings).set({ name: "Changed clinic" });
+    const log = vi.fn((message: string) => {
+      expect(message).not.toContain(value.email);
+      expect(message).not.toContain(value.name);
+      expect(message).not.toContain(value.phone);
+    });
+    const deliver = createPostBookingLocalEmail(() => database.db, source, log);
+    await Promise.all([deliver(receipt), deliver(receipt)]);
+    const replay = await integrated.bookForClinic(credentials.staff, value);
+    expect(replay).toEqual(receipt);
+    await deliver(replay);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({ event: "booking_email_simulated", delivery: "simulated email sent — no real email sent", body: job.body });
+    expect((await database.db.select().from(localBookingEmails))[0].loggedAt).toBeInstanceOf(Date);
+  });
+  it("does not queue for patients or disabled mode", async () => {
+    await withEmail().bookPatient(credentials.patient, input());
+    await withEmail(false).bookForClinic(credentials.staff, clinicInput(`${date}T09:20:00Z`));
+    expect(await database.db.select().from(localBookingEmails)).toEqual([]);
+    const log = vi.fn();
+    await createPostBookingLocalEmail(() => { throw new Error("must not connect"); }, {}, log)({ id: "unused" } as never);
+    expect(log).not.toHaveBeenCalled();
+  });
+  it("preserves the successful HTTP receipt on log failure and recovers with the same request", async () => {
+    const integrated = withEmail(), value = clinicInput(), warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const broken = createPostBookingLocalEmail(() => database.db, source, () => { throw new Error("private error"); });
+    try {
+      const response = await createClinicBookingHandler(() => integrated, () => baseURL, broken)(httpRequest("bookings", "staff", value));
+      expect(response.status).toBe(200);
+      const { receipt } = await response.json();
+      expect((await database.db.select().from(localBookingEmails))[0].loggedAt).toBeNull();
+      const log = vi.fn();
+      const retry = await createClinicBookingHandler(() => integrated, () => baseURL, createPostBookingLocalEmail(() => database.db, source, log))(httpRequest("bookings", "staff", value));
+      expect((await retry.json()).receipt).toEqual(receipt);
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(await counts()).toEqual([1, 1, 1, 1]);
+      expect(warn).toHaveBeenCalledWith(expect.not.stringContaining("private error"));
+    } finally { warn.mockRestore(); }
+  });
+  it.each([false, true])("rolls back the email job with booking on immediate/deferred failure (%s)", async (deferred) => {
+    await database.db.execute(sql`CREATE FUNCTION reject_local_email() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic'; END $$`);
+    await database.db.execute(sql.raw(`CREATE ${deferred ? "CONSTRAINT" : ""} TRIGGER reject_local_email ${deferred ? "AFTER" : "BEFORE"} INSERT ON local_booking_emails ${deferred ? "DEFERRABLE INITIALLY DEFERRED" : ""} FOR EACH ROW EXECUTE FUNCTION reject_local_email()`));
+    const integrated = withEmail(), value = clinicInput(), log = vi.fn();
+    try {
+      const handler = createClinicBookingHandler(() => integrated, () => baseURL, createPostBookingLocalEmail(() => database.db, source, log));
+      expect((await handler(httpRequest("bookings", "staff", value))).status).toBe(503);
+      expect(await counts()).toEqual([0, 0, 0, 0]);
+      expect(await database.db.select().from(localBookingEmails)).toEqual([]);
+      expect(log).not.toHaveBeenCalled();
+    } finally {
+      await database.db.execute(sql`DROP TRIGGER reject_local_email ON local_booking_emails`);
+      await database.db.execute(sql`DROP FUNCTION reject_local_email()`);
+    }
+    await integrated.bookForClinic(credentials.staff, value);
+    expect(await database.db.select().from(localBookingEmails)).toHaveLength(1);
   });
 });
