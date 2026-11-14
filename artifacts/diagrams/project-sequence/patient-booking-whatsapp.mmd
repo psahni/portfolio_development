@@ -1,0 +1,41 @@
+%% Patient Booking and WhatsApp
+%% Summary: Shows slot confirmation, patient appointment listing, and consent-based post-commit WhatsApp attempts.
+sequenceDiagram
+    actor Patient
+    participant App as Booking App
+    participant Auth as Auth and Access
+    participant Schedule as Shared Scheduling Service
+    participant DB as PostgreSQL
+    participant Worker as WhatsApp Worker or Request Handler
+    participant Meta as Meta WhatsApp API
+
+    Note over Patient,Meta: Patient Booking and WhatsApp<br/>Shows slot confirmation, patient appointment listing, and consent-based post-commit WhatsApp attempts.
+
+    App-->>Patient: Show available dates and slots
+    Patient->>App: Select slot, enter details and optional WhatsApp consent
+    App->>Schedule: Confirm booking request
+    Schedule->>DB: Lock doctor, recheck slot and policy
+    alt Slot unavailable or policy rejects
+        DB-->>Schedule: Reject
+        Schedule-->>App: Validation/conflict result
+        App-->>Patient: Choose another slot or follow policy guidance
+    else Booking accepted
+        Schedule->>DB: Commit appointment, occupancy, audit, receipt and consent/job
+        DB-->>Schedule: Commit succeeded
+        Schedule-->>App: Confirmed appointment
+        App-->>Patient: Show confirmation
+        opt Active WhatsApp consent
+            App->>Worker: Attempt post-commit notification or leave queued job
+            Worker->>DB: Claim job and save safe attempt record
+            Worker->>Meta: Send using test sender and fixed owner test recipient
+            Meta-->>Worker: Accepted, rejected or outcome uncertain
+            Worker->>DB: Record result and retry safe failures as configured
+            Note over Worker,Meta: API acceptance is not proof of delivery, and failures do not undo booking.
+        end
+    end
+
+    Patient->>App: Open My appointments
+    App->>Auth: Check patient session and ownership
+    Auth->>DB: Read only explicitly linked appointments
+    DB-->>App: Patient's appointments
+    App-->>Patient: Show appointment history and status

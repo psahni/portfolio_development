@@ -1,0 +1,27 @@
+%% Clinic Cancellation
+%% Summary: Shows doctor/admin and staff cancellation permissions and the resulting agenda updates.
+sequenceDiagram
+    actor Doctor as Doctor / Admin
+    actor Staff
+    participant App as Booking App
+    participant Auth as Auth and Access
+    participant Schedule as Shared Scheduling Service
+    participant DB as PostgreSQL
+
+    Note over Doctor,DB: Clinic Cancellation<br/>Shows doctor/admin and staff cancellation permissions and the resulting agenda updates.
+
+    alt Doctor/admin cancels a visit
+        Doctor->>App: Cancel from agenda with reason and optional block/rebooking instruction
+        App->>Auth: Check admin session
+        Auth->>Schedule: Authorize cancellation and admin options
+    else Staff cancels clinic-created visit
+        Staff->>App: Cancel future confirmed clinic-created visit with reason
+        App->>Auth: Check staff session and appointment origin
+        Auth->>Schedule: Authorize allowed staff cancellation
+    end
+    Schedule->>DB: Lock doctor, cancel, release or block time, audit atomically
+    DB-->>Schedule: Cancellation committed
+    Schedule-->>App: Cancelled appointment and saved reason
+    App-->>Doctor: Update agenda and cancelled history
+    App-->>Staff: Update agenda and cancelled history
+    Note over Doctor,Schedule: Automatic cancellation email is planned. No cancellation notice is sent in the current implementation.
