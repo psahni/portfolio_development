@@ -7,7 +7,7 @@ export default function AdminLogin() {
   return <main className="mx-auto flex min-h-screen max-w-6xl flex-col px-5 py-6 sm:px-8">
     <header className="flex items-center justify-between gap-4"><Brand /><Link href="/" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary"><ArrowLeft aria-hidden="true" className="size-3.5" />Back to home</Link></header>
     <div className="grid flex-1 items-center gap-7 py-6 md:grid-cols-[1.1fr_1fr] md:gap-20 md:py-16">
-      <section className="relative rounded-xl bg-[#eef5f2] p-5 sm:p-10 md:py-16">
+      <section className="signin-info-panel relative rounded-xl p-5 sm:p-10 md:py-16">
         <div className="mb-8 hidden size-11 items-center justify-center rounded-xl border border-primary/10 bg-white text-primary md:flex"><CalendarDays aria-hidden="true" className="size-5" /></div>
         <p className="ui-eyebrow mb-4 hidden !text-primary md:block">Made for the way you care</p>
         <h1 className="text-3xl leading-[1.12] font-semibold tracking-[-0.055em] md:text-5xl">Your clinic.<br />A calmer day.</h1>
