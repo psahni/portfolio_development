@@ -1,0 +1,41 @@
+%% Implemented booking architecture; WhatsApp Phase 1 uses a fixed test recipient.
+%% Email-code delivery remains deferred; localhost test mode supports the demo.
+flowchart TD
+    A["Admin sets up the clinic<br/>Doctor · Timezone · Visit duration"]
+    B["Configure availability<br/>Weekly hours · Holidays · Breaks"]
+    A --> B
+
+    P["Patient signs in<br/>Email + code"]
+    P --> D["Choose a date and available slot"]
+    D --> E["Enter details<br/>Optional WhatsApp consent"]
+    E --> F["Review and confirm"]
+
+    S["Admin or staff signs in"]
+    S --> T["Select slot · Enter patient details"]
+    T --> U["Review and confirm"]
+
+    B --> V["Shared availability rules"]
+    V --> D
+    V --> T
+
+    F --> G["Shared booking service"]
+    U --> G
+    G --> H{"Slot still available?"}
+    H -->|No| I["Choose another slot"]
+    H -->|Yes| J[("PostgreSQL transaction<br/>Save appointment + reserve time<br/>Audit + retry receipt<br/>Notification job when applicable")]
+
+    J --> K["Commit succeeds"]
+    K --> L["Show confirmed appointment"]
+    L --> M["Visible in clinic agenda"]
+    L --> N["Patient sees explicitly linked booking"]
+
+    K --> O{"Patient opted into WhatsApp?"}
+    O -->|Yes| Q["After commit<br/>Worker or request delivery"]
+    Q --> R["Meta WhatsApp API"]
+    R --> W["Configured test recipient"]
+    Q --> X["Record acceptance, failure<br/>or uncertain outcome"]
+
+    %% Selection alone reserves nothing; confirmation rechecks under the doctor lock.
+    %% WhatsApp failure preserves the confirmed appointment and successful receipt.
+    %% API acceptance is not proof of delivery; enabled production use is rejected.
+    %% Clinic-created bookings do not request WhatsApp or auto-link patient accounts.
