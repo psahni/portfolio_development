@@ -25,13 +25,13 @@ sequenceDiagram
             Email-->>Patient: Planned one-time code delivery
         end
         Patient->>App: Submit code
-        App->>Auth: Verify code and create patient if new
-        Auth->>DB: Check code; create patient/session
+        App->>Auth: Verify code and register patient if new
+        Auth->>DB: Check code, register patient if new, start session
         DB-->>App: Patient session
         App-->>Patient: Show available dates and slots
         Patient->>App: Select slot, enter details and optional WhatsApp consent
         App->>Schedule: Confirm booking request
-        Schedule->>DB: Lock doctor; recheck slot and policy
+        Schedule->>DB: Lock doctor, recheck slot and policy
         alt Slot unavailable or policy rejects
             DB-->>Schedule: Reject
             Schedule-->>App: Validation/conflict result
@@ -46,8 +46,8 @@ sequenceDiagram
                 Worker->>DB: Claim job and save safe attempt record
                 Worker->>Meta: Send using test sender and fixed owner test recipient
                 Meta-->>Worker: Accepted, rejected or outcome uncertain
-                Worker->>DB: Record result; retry safe failures as configured
-                Note over Patient,Meta: API acceptance is not proof of delivery; failures do not undo booking.
+                Worker->>DB: Record result and retry safe failures as configured
+                Note over Patient,Meta: API acceptance is not proof of delivery, and failures do not undo booking.
             end
         end
         Patient->>App: Open My appointments
@@ -68,7 +68,7 @@ sequenceDiagram
         Schedule->>DB: Validate conflicts and persist schedule
         Doctor->>App: Add, list, disable or re-enable staff
         App->>Auth: Apply admin-only staff management
-        Auth->>DB: Save staff access; revoke sessions on disable
+        Auth->>DB: Save staff access and revoke sessions on disable
         Doctor->>App: Open daily agenda
         App->>DB: Read appointments for selected clinic date
         DB-->>App: Confirmed, cancelled and other history
@@ -93,13 +93,13 @@ sequenceDiagram
         App->>DB: Read agenda or request available slots
         Staff->>App: Enter patient details and confirm
         App->>Schedule: Confirm clinic-created booking
-        Schedule->>DB: Lock doctor; recheck and commit appointment, occupancy, audit and receipt
+        Schedule->>DB: Lock doctor, recheck and commit appointment, occupancy, audit and receipt
         Note over Schedule,DB: Local email template job is included in this transaction when localhost preview fallback applies.
         DB-->>Schedule: Commit succeeded
         Schedule-->>App: Confirmed clinic-created appointment
         opt SMTP_HOST absent or blank on localhost development/test
             App->>Email: After commit, write redacted simulated confirmation log
-            Email-->>App: Preview result; booking remains confirmed if logging fails
+            Email-->>App: Preview result, booking remains confirmed if logging fails
         end
         Note over Staff,Email: Clinic-created visits do not auto-link patient accounts or request WhatsApp delivery.
     end
@@ -119,7 +119,7 @@ sequenceDiagram
             App->>Auth: Check staff session and appointment origin
             Auth->>Schedule: Authorize allowed staff cancellation
         end
-        Schedule->>DB: Lock doctor; cancel, release or block time, audit atomically
+        Schedule->>DB: Lock doctor, cancel, release or block time, audit atomically
         DB-->>Schedule: Cancellation committed
         Schedule-->>App: Cancelled appointment and saved reason
         App-->>Patient: Show cancelled status when patient initiated
@@ -128,7 +128,7 @@ sequenceDiagram
         opt Patient chooses to book again
             Patient->>App: Start a separate booking
             App->>Schedule: Recheck current availability and policy
-            Note over Patient,Schedule: A suggested time does not reserve a slot; patient cancellation and rebooking are separate.
+            Note over Patient,Schedule: A suggested time does not reserve a slot. Patient cancellation and rebooking are separate.
         end
-        Note over Doctor,Email: Automatic cancellation email is planned; no cancellation notice is sent in the current implementation.
+        Note over Doctor,Email: Automatic cancellation email is planned. No cancellation notice is sent in the current implementation.
     end
