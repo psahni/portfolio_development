@@ -1,0 +1,49 @@
+@startuml Project Authentication
+title Authentication
+note top
+Summary: Shows patient and staff code sign-in, admin PIN sign-in, and the current versus planned email delivery paths.
+end note
+
+actor Patient
+actor "Doctor / Admin" as Doctor
+actor Staff
+participant "Booking App" as App
+participant "Auth and Access" as Auth
+database "PostgreSQL" as DB
+participant "Email Preview / Provider" as Email
+
+== Patient code sign-in ==
+Patient -> App: Enter email and request one-time code
+App -> Auth: Request patient code
+Auth -> DB: Save expiring code request
+alt Localhost test mode
+    App --> Patient: Prompt for requested test code (0000)
+else Email delivery is connected in a future release
+    Auth --> Email: Planned login-code delivery
+    Email --> Patient: Planned one-time code delivery
+end
+Patient -> App: Submit code
+App -> Auth: Verify code and register patient if new
+Auth -> DB: Check code, register patient if new, start session
+DB --> App: Patient session
+
+== Staff code sign-in ==
+Staff -> App: Enter email and request code
+App -> Auth: Verify active staff account and issue code
+Auth -> DB: Save expiring code request
+alt Localhost test mode
+    App --> Staff: Prompt for requested test code (0000)
+else Email delivery is connected in a future release
+    Auth --> Email: Planned staff login-code delivery
+    Email --> Staff: Planned one-time code delivery
+end
+Staff -> App: Submit code
+App -> Auth: Verify staff code (staff must already exist)
+Auth -> DB: Check active staff access and create session
+
+== Doctor/admin PIN sign-in ==
+Doctor -> App: Sign in with email and PIN
+App -> Auth: Verify admin PIN and access
+Auth -> DB: Check account, lockout and session
+DB --> App: Admin session
+@enduml

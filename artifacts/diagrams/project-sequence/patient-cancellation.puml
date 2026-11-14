@@ -1,0 +1,28 @@
+@startuml Patient Cancellation and Rebooking
+title Patient Cancellation and Rebooking
+note top
+Summary: Shows an owned patient cancellation and the separate rebooking flow.
+end note
+
+actor Patient
+participant "Booking App" as App
+participant "Auth and Access" as Auth
+participant "Shared Scheduling Service" as Schedule
+database "PostgreSQL" as DB
+
+Patient -> App: Cancel from My appointments
+App -> Auth: Check patient session and appointment ownership
+Auth -> Schedule: Authorize patient self-cancellation
+Schedule -> DB: Lock doctor, cancel, release or block time, audit atomically
+DB --> Schedule: Cancellation committed
+Schedule --> App: Cancelled appointment and saved reason
+App --> Patient: Show cancelled status when patient initiated
+
+opt Patient chooses to book again
+    Patient -> App: Start a separate booking
+    App -> Schedule: Recheck current availability and policy
+    Schedule --> App: Current availability and policy result
+    App --> Patient: Show available dates and slots
+end
+note over Patient, Schedule: A suggested time does not reserve a slot. Patient cancellation and rebooking are separate.
+@enduml
