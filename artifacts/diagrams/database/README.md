@@ -4,6 +4,21 @@ The implemented PostgreSQL schema: **21 tables · 20 foreign keys · 2 isolated 
 
 Start with the association map, then open a focused ER view to read columns and cardinalities.
 
+## The folders in your database browser
+
+These are PostgreSQL schemas: namespaces inside the same database. For example, `patient_auth.user` and `staff_auth.user` are two different tables named `user`.
+
+| Schema | Why it exists |
+| --- | --- |
+| `public` | Application data: clinic settings, availability, appointments, audit, retry receipts, and notifications. |
+| `patient_auth` | Patient identities, sessions, accounts, and login-code verification records. |
+| `staff_auth` | Separate doctor/admin and staff identities, sessions, accounts, and verification records. |
+| `drizzle` | Migration bookkeeping so the migration tool knows which schema changes have already run. |
+| `information_schema` | Standard PostgreSQL metadata views describing tables, columns, and permissions. |
+| `pg_catalog` | PostgreSQL's internal catalogs describing types, indexes, tables, and other database objects. |
+
+The separate auth schemas support the application's patient/clinic identity boundaries. They do not enforce login privileges by themselves: server-side authorization and separate sessions remain essential. A database-browser entity count includes system objects and does not equal the number of application tables.
+
 ![Database association map](database-overview.svg)
 
 | View | Contents |
