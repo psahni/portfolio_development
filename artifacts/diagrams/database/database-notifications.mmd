@@ -1,0 +1,68 @@
+---
+title: Appointment Notifications — WhatsApp and Local Email
+---
+%% Physical foreign keys only. Dashed ER lines denote non-identifying relationships.
+erDiagram
+    direction LR
+    appointments["appointments"] {
+        uuid id PK
+        int doctor_id FK
+        uuid reservation_id FK,UK "nullable"
+        text patient_user_id FK "nullable"
+        text created_by_staff_id FK "nullable"
+        text source
+        text status
+        text contact_ciphertext
+        timestamptz starts_at
+        timestamptz ends_at
+        text timezone
+        int duration_minutes
+        int buffer_before_minutes
+        int buffer_after_minutes
+        timestamptz patient_cancelled_at "nullable"
+        boolean patient_cancellation_late "nullable"
+        text cancelled_by_staff_id FK "nullable"
+        timestamptz cancelled_at "nullable"
+        text cancellation_reason "nullable"
+        text rebooking_instruction "nullable"
+        boolean original_time_blocked
+        timestamptz created_at
+    }
+    whatsapp_consents["whatsapp_consents"] {
+        uuid appointment_id PK,FK
+        boolean consented
+        timestamptz recorded_at
+        boolean withdrawn
+        timestamptz withdrawn_at "nullable"
+    }
+    whatsapp_notifications["whatsapp_notifications"] {
+        uuid id PK
+        uuid appointment_id FK
+        text event
+        text status
+        int attempts
+        timestamptz available_at
+        timestamptz updated_at
+        text api_message_id "nullable"
+        text error_code "nullable"
+    }
+    whatsapp_attempts["whatsapp_attempts"] {
+        uuid id PK
+        uuid notification_id FK
+        int number
+        text status
+        timestamptz started_at
+        timestamptz finished_at "nullable"
+        text api_message_id "nullable"
+        text error_code "nullable"
+    }
+    local_booking_emails["local_booking_emails"] {
+        uuid appointment_id PK,FK
+        text subject
+        text body
+        timestamptz logged_at "nullable"
+    }
+    appointments ||--o| whatsapp_consents : "appointment_id"
+    appointments ||..o| whatsapp_notifications : "appointment_id"
+    whatsapp_notifications ||..o{ whatsapp_attempts : "notification_id"
+    appointments ||--o| local_booking_emails : "appointment_id"

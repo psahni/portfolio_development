@@ -1,0 +1,115 @@
+---
+title: Clinic, Availability and Booking Persistence
+---
+%% Physical foreign keys only. Dashed ER lines denote non-identifying relationships.
+erDiagram
+    direction LR
+    clinic_settings["clinic_settings"] {
+        int id PK
+        text name
+        text email
+        text phone
+        text timezone
+        timestamptz updated_at
+    }
+    doctor_profile["doctor_profile"] {
+        int id PK,FK
+        text name
+        int duration_minutes
+        int buffer_before_minutes
+        int buffer_after_minutes
+        int min_lead_minutes
+        int booking_horizon_days
+    }
+    weekly_hours["weekly_hours"] {
+        int doctor_id PK,FK
+        int day PK
+        int start_minute PK
+        int end_minute
+    }
+    day_overrides["day_overrides"] {
+        int doctor_id PK,FK
+        date date PK
+        text mode
+        jsonb intervals
+        text reason
+    }
+    reservations["reservations"] {
+        uuid id PK
+        int doctor_id FK
+        text kind
+        timestamptz starts_at
+        timestamptz ends_at
+        text reason
+    }
+    appointments["appointments"] {
+        uuid id PK
+        int doctor_id FK
+        uuid reservation_id FK,UK "nullable"
+        text patient_user_id FK "nullable"
+        text created_by_staff_id FK "nullable"
+        text source
+        text status
+        text contact_ciphertext
+        timestamptz starts_at
+        timestamptz ends_at
+        text timezone
+        int duration_minutes
+        int buffer_before_minutes
+        int buffer_after_minutes
+        timestamptz patient_cancelled_at "nullable"
+        boolean patient_cancellation_late "nullable"
+        text cancelled_by_staff_id FK "nullable"
+        timestamptz cancelled_at "nullable"
+        text cancellation_reason "nullable"
+        text rebooking_instruction "nullable"
+        boolean original_time_blocked
+        timestamptz created_at
+    }
+    booking_audit["booking_audit"] {
+        uuid id PK
+        uuid appointment_id FK
+        text action
+        text actor_kind
+        text actor_id
+        timestamptz created_at
+    }
+    booking_requests["booking_requests"] {
+        text actor_kind PK
+        text actor_id PK
+        uuid request_id PK
+        text fingerprint
+        uuid appointment_id FK
+        jsonb receipt
+        timestamptz expires_at
+        timestamptz created_at
+    }
+    patient_user["patient_auth.user"] {
+        text id PK
+        text name
+        text email UK
+        boolean email_verified
+        text image "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    staff_user["staff_auth.user"] {
+        text id PK
+        text name
+        text email UK
+        boolean email_verified
+        text image "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    clinic_settings ||--o| doctor_profile : "id"
+    doctor_profile ||--o{ weekly_hours : "doctor_id"
+    doctor_profile ||--o{ day_overrides : "doctor_id"
+    doctor_profile ||..o{ reservations : "doctor_id"
+    doctor_profile ||..o{ appointments : "doctor_id"
+    reservations o|..o| appointments : "reservation_id"
+    patient_user o|..o{ appointments : "patient_user_id"
+    staff_user o|..o{ appointments : "created_by_staff_id"
+    staff_user o|..o{ appointments : "cancelled_by_staff_id"
+    appointments ||..o{ booking_audit : "appointment_id"
+    appointments ||..o{ booking_requests : "appointment_id"
