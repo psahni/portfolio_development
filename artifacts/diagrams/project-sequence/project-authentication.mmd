@@ -1,0 +1,53 @@
+%% Authentication
+%% Summary: Shows patient and staff code sign-in, admin PIN sign-in, and current versus planned email delivery paths.
+sequenceDiagram
+    actor Patient
+    actor Doctor as Doctor / Admin
+    actor Staff
+    participant App as Booking App
+    participant Auth as Auth and Access
+    participant DB as PostgreSQL
+    participant Email as Email Preview / Provider
+
+    Note over Patient,Email: Authentication<br/>Shows patient and staff code sign-in, admin PIN sign-in, and current versus planned email delivery paths.
+
+    rect rgb(238, 246, 255)
+        Note over Patient,Email: Patient code sign-in
+        Patient->>App: Enter email and request one-time code
+        App->>Auth: Request patient code
+        Auth->>DB: Save expiring code request
+        alt Localhost test mode
+            App-->>Patient: Prompt for requested test code (0000)
+        else Email delivery is connected in a future release
+            Auth-->>Email: Planned login-code delivery
+            Email-->>Patient: Planned one-time code delivery
+        end
+        Patient->>App: Submit code
+        App->>Auth: Verify code and register patient if new
+        Auth->>DB: Check code, register patient if new, start session
+        DB-->>App: Patient session
+    end
+
+    rect rgb(241, 250, 242)
+        Note over Staff,Email: Staff code sign-in
+        Staff->>App: Enter email and request code
+        App->>Auth: Verify active staff account and issue code
+        Auth->>DB: Save expiring code request
+        alt Localhost test mode
+            App-->>Staff: Prompt for requested test code (0000)
+        else Email delivery is connected in a future release
+            Auth-->>Email: Planned staff login-code delivery
+            Email-->>Staff: Planned one-time code delivery
+        end
+        Staff->>App: Submit code
+        App->>Auth: Verify staff code (staff must already exist)
+        Auth->>DB: Check active staff access and create session
+    end
+
+    rect rgb(255, 249, 237)
+        Note over Doctor,DB: Doctor/admin PIN sign-in
+        Doctor->>App: Sign in with email and PIN
+        App->>Auth: Verify admin PIN and access
+        Auth->>DB: Check account, lockout and session
+        DB-->>App: Admin session
+    end

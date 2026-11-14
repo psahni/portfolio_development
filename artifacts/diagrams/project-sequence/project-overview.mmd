@@ -1,0 +1,63 @@
+%% Project Overview
+%% Summary: Shows how authentication, booking, clinic operations, and cancellations connect through the app, scheduling service, and database.
+sequenceDiagram
+    actor Patient
+    actor Doctor as Doctor / Admin
+    actor Staff
+    participant App as Booking App
+    participant Auth as Auth and Access
+    participant Schedule as Shared Scheduling Service
+    participant DB as PostgreSQL
+
+    Note over Patient,DB: Project Overview<br/>Shows how authentication, booking, clinic operations, and cancellations connect through the app, scheduling service, and database.
+
+    rect rgb(238, 246, 255)
+        Note over Patient,Auth: REF: Authentication<br/>See project-authentication.mmd
+        Patient->>App: Enter email and request one-time code
+        App->>Auth: Request patient code
+        Auth->>DB: Save expiring code request
+        Patient->>App: Submit code
+        App->>Auth: Verify code and register patient if new
+        Auth->>DB: Check code, register patient if new, start session
+        DB-->>App: Patient session
+    end
+
+    rect rgb(241, 250, 242)
+        Note over Doctor,Schedule: REF: Clinic setup and staff booking<br/>See clinic-operations.mmd
+        Doctor->>App: Configure hours, breaks and special dates
+        App->>Schedule: Save availability change
+        Schedule->>DB: Validate conflicts and persist schedule
+        Staff->>App: Enter patient details and confirm
+        App->>Schedule: Confirm clinic-created booking
+        Schedule->>DB: Lock doctor, recheck and commit appointment, occupancy, audit and receipt
+        DB-->>Schedule: Commit succeeded
+    end
+
+    rect rgb(255, 249, 237)
+        Note over Patient,Schedule: REF: Patient booking and WhatsApp<br/>See patient-booking-whatsapp.mmd
+        Patient->>App: Select slot, enter details and optional WhatsApp consent
+        App->>Schedule: Confirm booking request
+        Schedule->>DB: Lock doctor, recheck slot and policy
+        DB-->>Schedule: Commit succeeded
+        Schedule-->>App: Confirmed appointment
+        App-->>Patient: Show confirmation
+    end
+
+    rect rgb(255, 240, 240)
+        Note over Patient,Schedule: REF: Patient cancellation and rebooking<br/>See patient-cancellation.mmd
+        Patient->>App: Cancel from My appointments
+        App->>Auth: Check patient session and appointment ownership
+        Auth->>Schedule: Authorize patient self-cancellation
+        Schedule->>DB: Lock doctor, cancel, release or block time, audit atomically
+        DB-->>Schedule: Cancellation committed
+    end
+
+    rect rgb(255, 244, 237)
+        Note over Doctor,Schedule: REF: Clinic cancellation<br/>See clinic-cancellation.mmd
+        Doctor->>App: Cancel from agenda with reason and optional block/rebooking instruction
+        Staff->>App: Cancel future confirmed clinic-created visit with reason
+        App->>Auth: Check clinic session and appointment origin
+        Auth->>Schedule: Authorize cancellation
+        Schedule->>DB: Lock doctor, cancel, release or block time, audit atomically
+        DB-->>Schedule: Cancellation committed
+    end

@@ -1,0 +1,27 @@
+%% Implemented admin, staff and patient scheduling/cancellation flows.
+%% Cancellation notifications and automatic moves around a break remain deferred.
+flowchart TD
+    A["Admin workspace"] --> B["Clinic settings and weekly hours"]
+    A --> C["Holiday or special hours<br/>Replace that date's weekly hours"]
+    A --> D["Add a break"]
+    D --> E{"Overlaps an existing booking?"}
+    E -->|Yes| F["Reject break and show conflict"]
+    E -->|No| G["Block time from booking"]
+
+    A --> H["Open daily agenda"]
+    S["Staff workspace"] --> H
+    H --> I["Select future confirmed appointment"]
+    I --> J{"Who is cancelling?"}
+    J -->|Admin| K["Any appointment<br/>Reason required<br/>Optional time block / rebooking instruction"]
+    J -->|Staff| L["Clinic-created appointments only<br/>Reason required"]
+    K --> M["Save cancellation and audit<br/>Release time or retain admin block"]
+    L --> M
+    M --> N["Move appointment to Cancelled tab"]
+
+    P["Patient: My appointments"] --> Q["Cancel own future appointment"]
+    Q --> R["Release time and retain history"]
+    R --> T["Book again separately"]
+
+    %% A break overlapping an existing manual block is also rejected.
+    %% Holiday/special-hours changes must preserve existing bookings.
+    %% Rebooking remains subject to current availability and patient booking policy.

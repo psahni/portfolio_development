@@ -1,0 +1,104 @@
+---
+title: Patient and Clinic Identity — Separate Auth Schemas
+---
+%% Physical foreign keys only. Dashed ER lines denote non-identifying relationships.
+erDiagram
+    direction LR
+    patient_user["patient_auth.user"] {
+        text id PK
+        text name
+        text email UK
+        boolean email_verified
+        text image "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    patient_session["patient_auth.session"] {
+        text id PK
+        text token UK
+        timestamptz expires_at
+        timestamptz created_at
+        timestamptz updated_at
+        text ip_address "nullable"
+        text user_agent "nullable"
+        text user_id FK
+    }
+    patient_account["patient_auth.account"] {
+        text id PK
+        text account_id
+        text provider_id
+        text user_id FK
+        text access_token "nullable"
+        text refresh_token "nullable"
+        text id_token "nullable"
+        timestamptz access_token_expires_at "nullable"
+        timestamptz refresh_token_expires_at "nullable"
+        text scope "nullable"
+        text password "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    patient_verification["patient_auth.verification"] {
+        text id PK
+        text identifier
+        text value
+        timestamptz expires_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    staff_user["staff_auth.user"] {
+        text id PK
+        text name
+        text email UK
+        boolean email_verified
+        text image "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    staff_session["staff_auth.session"] {
+        text id PK
+        text token UK
+        timestamptz expires_at
+        timestamptz created_at
+        timestamptz updated_at
+        text ip_address "nullable"
+        text user_agent "nullable"
+        text user_id FK
+    }
+    staff_account["staff_auth.account"] {
+        text id PK
+        text account_id
+        text provider_id
+        text user_id FK
+        text access_token "nullable"
+        text refresh_token "nullable"
+        text id_token "nullable"
+        timestamptz access_token_expires_at "nullable"
+        timestamptz refresh_token_expires_at "nullable"
+        text scope "nullable"
+        text password "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    staff_verification["staff_auth.verification"] {
+        text id PK
+        text identifier
+        text value
+        timestamptz expires_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    staff_access["staff_access"] {
+        text user_id PK,FK
+        text role
+        boolean active
+        text admin_pin_hash "nullable"
+        int failed_pin_attempts
+        timestamptz pin_locked_until "nullable"
+        timestamptz updated_at
+    }
+    patient_user ||..o{ patient_session : "user_id"
+    patient_user ||..o{ patient_account : "user_id"
+    staff_user ||..o{ staff_session : "user_id"
+    staff_user ||..o{ staff_account : "user_id"
+    staff_user ||--o| staff_access : "user_id"

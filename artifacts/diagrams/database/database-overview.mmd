@@ -1,0 +1,67 @@
+---
+title: Nuvortiq Database — Association Map
+---
+flowchart LR
+    classDef patient fill:#EFF6FF,stroke:#2563EB,color:#172554,stroke-width:1.5px
+    classDef staff fill:#F5F3FF,stroke:#7C3AED,color:#2E1065,stroke-width:1.5px
+    classDef schedule fill:#ECFDF5,stroke:#059669,color:#064E3B,stroke-width:1.5px
+    classDef booking fill:#FFF7ED,stroke:#EA580C,color:#7C2D12,stroke-width:1.5px
+    classDef notice fill:#ECFEFF,stroke:#0891B2,color:#164E63,stroke-width:1.5px
+    subgraph domain0["PATIENT IDENTITY"]
+        direction TB
+        patient_user["<b>patient_auth.user</b><br/>PK: id"]:::patient
+        patient_session["<b>patient_auth.session</b><br/>PK: id"]:::patient
+        patient_account["<b>patient_auth.account</b><br/>PK: id"]:::patient
+        patient_verification["<b>patient_auth.verification</b><br/>PK: id"]:::patient
+    end
+    subgraph domain1["CLINIC IDENTITY"]
+        direction TB
+        staff_user["<b>staff_auth.user</b><br/>PK: id"]:::staff
+        staff_session["<b>staff_auth.session</b><br/>PK: id"]:::staff
+        staff_account["<b>staff_auth.account</b><br/>PK: id"]:::staff
+        staff_verification["<b>staff_auth.verification</b><br/>PK: id"]:::staff
+        staff_access["<b>staff_access</b><br/>PK: user_id"]:::staff
+    end
+    subgraph domain2["CLINIC AND AVAILABILITY"]
+        direction TB
+        clinic_settings["<b>clinic_settings</b><br/>PK: id"]:::schedule
+        doctor_profile["<b>doctor_profile</b><br/>PK: id"]:::schedule
+        weekly_hours["<b>weekly_hours</b><br/>PK: doctor_id, day, start_minute"]:::schedule
+        day_overrides["<b>day_overrides</b><br/>PK: doctor_id, date"]:::schedule
+        reservations["<b>reservations</b><br/>PK: id"]:::schedule
+    end
+    subgraph domain3["BOOKINGS AND HISTORY"]
+        direction TB
+        appointments["<b>appointments</b><br/>PK: id"]:::booking
+        booking_audit["<b>booking_audit</b><br/>PK: id"]:::booking
+        booking_requests["<b>booking_requests</b><br/>PK: actor_kind, actor_id, request_id"]:::booking
+    end
+    subgraph domain4["NOTIFICATIONS"]
+        direction TB
+        whatsapp_consents["<b>whatsapp_consents</b><br/>PK: appointment_id"]:::notice
+        whatsapp_notifications["<b>whatsapp_notifications</b><br/>PK: id"]:::notice
+        whatsapp_attempts["<b>whatsapp_attempts</b><br/>PK: id"]:::notice
+        local_booking_emails["<b>local_booking_emails</b><br/>PK: appointment_id"]:::notice
+    end
+    patient_user -->|"user_id"| patient_session
+    patient_user -->|"user_id"| patient_account
+    staff_user -->|"user_id"| staff_session
+    staff_user -->|"user_id"| staff_account
+    staff_user -->|"user_id"| staff_access
+    clinic_settings -->|"id"| doctor_profile
+    doctor_profile -->|"doctor_id"| weekly_hours
+    doctor_profile -->|"doctor_id"| day_overrides
+    doctor_profile -->|"doctor_id"| reservations
+    doctor_profile -->|"doctor_id"| appointments
+    reservations -->|"reservation_id"| appointments
+    patient_user -->|"patient_user_id"| appointments
+    staff_user -->|"created_by_staff_id"| appointments
+    staff_user -->|"cancelled_by_staff_id"| appointments
+    appointments -->|"appointment_id"| booking_audit
+    appointments -->|"appointment_id"| booking_requests
+    appointments -->|"appointment_id"| whatsapp_consents
+    appointments -->|"appointment_id"| whatsapp_notifications
+    whatsapp_notifications -->|"notification_id"| whatsapp_attempts
+    appointments -->|"appointment_id"| local_booking_emails
+    %% No FK is defined for verification.identifier or polymorphic actor_id columns.
+    %% Arrow direction is referenced parent to referencing child. Cardinalities are in the ER views.
