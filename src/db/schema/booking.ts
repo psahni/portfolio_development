@@ -15,6 +15,7 @@ export const appointments = pgTable("appointments", {
   source: text("source").$type<"patient" | "clinic">().notNull(),
   status: text("status").$type<"confirmed" | "cancelled" | "completed" | "no_show">().notNull().default("confirmed"),
   contactCiphertext: text("contact_ciphertext").notNull(),
+  whatsappNumberVerified: boolean("whatsapp_number_verified").notNull().default(false),
   startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
   endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
   timezone: text("timezone").notNull(),

@@ -21,7 +21,7 @@ export function readWhatsAppConfig(source: Record<string, string | undefined> = 
   return result.data;
 }
 export type SendResult = { status: "accepted" | "failed" | "uncertain"; apiMessageId?: string; errorCode?: string; retryable?: boolean };
-export type WhatsAppSender = { send(visit: { startsAt: Date; timezone: string }): Promise<SendResult> };
+export type WhatsAppSender = { send(visit: { startsAt: Date; timezone: string }, destination?: { to: string; event: "booking_created" | "appointment_cancelled" }): Promise<SendResult> };
 
 export function isWhatsAppWorkerEnabled(source: Record<string, string | undefined> = process.env): boolean {
   const flag = source.WHATSAPP_USE_WORKER ?? "true";

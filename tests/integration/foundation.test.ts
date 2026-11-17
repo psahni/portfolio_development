@@ -13,6 +13,7 @@ import { createIdentity } from "@/modules/identity/create-auth";
 import { bootstrapAdmin } from "@/modules/identity/admin-pin";
 import { createStaffAuthHandler } from "@/modules/identity/http";
 import type { LoginCode } from "@/platform/mail";
+import { createLocalAuthMailer } from "@/platform/local-auth-mailer";
 
 const baseURL = "http://localhost:3000";
 const adminEmail = "doctor@example.test";
@@ -121,6 +122,19 @@ describe("PostgreSQL and migrations", () => {
 });
 
 describe("email-code authentication", () => {
+  it("logs a generated local email code and accepts that code through the existing patient OTP flow", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "nuvortiq-email-preview-"));
+    try {
+      const previewIdentity = createIdentity({ db: database.db, baseURL, patientSecret: "patient-preview-secret-" + "c".repeat(32), staffSecret: "staff-preview-secret-" + "d".repeat(32), mailer: createLocalAuthMailer(directory) });
+      const email = `preview-${randomUUID()}@example.test`;
+      await previewIdentity.patient.api.sendVerificationOTP({ body: { email, type: "sign-in" } });
+      const logged = JSON.parse((await readFile(join(directory, "email-preview.log"), "utf8")).trim()) as { event: string; delivery: string; to: string; body: string };
+      const code = logged.body.match(/code is (\d{6})/)?.[1];
+      expect(logged).toMatchObject({ event: "auth_email_simulated", delivery: "simulated email — not sent", to: email });
+      expect(code).toMatch(/^\d{6}$/);
+      expect((await previewIdentity.patient.api.signInEmailOTP({ body: { email, otp: code! }, asResponse: true })).status).toBe(200);
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
   it.each(["patient", "staff"] as const)("%s codes are single-use and never grant access in the other realm", async (audience) => {
     const email = audience === "staff" ? staffEmail : "patient@example.test";
     const { response, code } = await emailLogin(audience, email);

@@ -1,10 +1,10 @@
-import { localBookingEmails } from "@/db/schema/notifications";
 import { createPostBookingLocalEmail, localBookingEmailEnabled, localEmailBookingEvents } from "@/modules/notifications/local-booking-email";
-import { whatsappAttempts, whatsappConsents, whatsappNotifications } from "@/db/schema/notifications";
-import { whatsappBookingEvents } from "@/modules/notifications/booking-events";
+import { localBookingEmails, whatsappAttempts, whatsappConsents, whatsappNotifications } from "@/db/schema/notifications";
 import { createPostBookingWhatsApp } from "@/modules/notifications/post-booking";
 import type { SendResult } from "@/modules/notifications/meta";
 import { createWhatsAppDelivery } from "@/modules/notifications/delivery";
+import { createWhatsAppConversationService } from "@/modules/notifications/conversation-service";
+import { createSlotAvailabilityService } from "@/modules/scheduling/slots";
 import { createWhatsAppConsentHandler } from "@/modules/notifications/consent";
 import { vi } from "vitest";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -34,11 +34,14 @@ import { createDoctorAppointmentsService } from "@/modules/booking/doctor-appoin
 import { createDoctorAppointmentsHandler } from "@/modules/booking/doctor-http";
 import { createClinicBookingAvailability } from "@/modules/booking/clinic-booking";
 import { createClinicAvailabilityHandler, createClinicBookingHandler } from "@/modules/booking/clinic-booking-http";
+import { whatsappBookingEvents } from "@/modules/notifications/booking-events";
+import { whatsappCancellationEvents } from "@/modules/notifications/cancellation-events";
 import { unconfiguredMailer } from "@/platform/mail";
 
 const baseURL = "http://localhost:3000", date = "2026-11-10";
 const adminEmail = "doctor@example.test", staffEmail = "staff@example.test";
-const protection = createContactProtection(randomBytes(32).toString("base64"));
+const protectionKey = randomBytes(32).toString("base64");
+const protection = createContactProtection(protectionKey);
 let database: ReturnType<typeof createDatabase>;
 let identity: ReturnType<typeof createIdentity>;
 let service: ReturnType<typeof createBookingService>;
@@ -56,6 +59,25 @@ const cancellationHandler = () => createPatientCancellationHandler(cancellationS
 const doctorService = () => createDoctorAppointmentsService(database.db, identity.access, () => protection, clock);
 const doctorHandler = () => createDoctorAppointmentsHandler(doctorService, () => baseURL);
 const doctorInput = (appointmentId: string, blockOriginalTime = false) => ({ appointmentId, reason: "Doctor unavailable", rebookingInstruction: "Please book another available time.", blockOriginalTime });
+function whatsappConversation(phone: string, conversationClock = clock) {
+  const waBooking = createBookingService(database.db, { ...identity.access, requirePatientAccess: createPatientBookingAccess(identity.patient) }, protection, conversationClock, whatsappBookingEvents);
+  const send = vi.fn(async () => {});
+  const flow = createWhatsAppConversationService(database.db, waBooking, createSlotAvailabilityService(database.db, conversationClock), identity.patient, { send }, protectionKey, conversationClock);
+  return { flow, send, message: (body: string, id: string = randomUUID()) => flow.process(phone, id, body) };
+}
+async function chooseWhatsAppSlot(message: (body: string, id?: string) => ReturnType<ReturnType<typeof createWhatsAppConversationService>["process"]>, email: string, name = "Synthetic WhatsApp Patient") {
+  await message("Hi"); await message("book"); await message(name); await message(email);
+  const dates = await message("0000");
+  if (dates?.reply.type !== "list") throw new Error("Expected available dates.");
+  const dateId = dates.reply.rows.find((row) => row.id.startsWith("D:"))?.id;
+  if (!dateId) throw new Error("No available date option.");
+  const times = await message(dateId);
+  if (times?.reply.type !== "list") throw new Error("Expected available time slots.");
+  const slotId = times.reply.rows.find((row) => row.id.startsWith("S:"))?.id;
+  if (!slotId) throw new Error("No available time option.");
+  await message(slotId);
+  return { dateId, slotId, startsAt: slotId.slice(2) };
+}
 function httpRequest(path: string, role = "patient", body?: unknown, origin: string | null = baseURL, method = body === undefined ? "GET" : "POST") {
   const headers = new Headers(credentials[role]);
   if (origin !== null) headers.set("origin", origin);
@@ -161,6 +183,123 @@ describe("patient daily booking limit", () => {
     await service.bookPatient(credentials.patient, input(slots[0].startsAt));
     await expect(service.bookPatient(credentials.patient, input(slots.at(-1)!.startsAt))).rejects.toMatchObject({ code: "PATIENT_DAILY_LIMIT" });
     expect(await counts()).toEqual([1, 1, 1, 1]);
+  });
+});
+
+describe("WhatsApp conversational booking", () => {
+  it("validates the patient name, supports cancellation before commit, and returns clinic support details", async () => {
+    const phone = "+919899999991", flow = whatsappConversation(phone);
+    await flow.message("Hi"); await flow.message("book");
+    const invalidName = await flow.message("\n\u0001");
+    expect(invalidName?.state).toBe("WAITING_FOR_NAME");
+    expect(invalidName?.reply.type).toBe("text");
+    expect((await flow.message("cancel"))?.state).toBe("MAIN_MENU");
+    const cfg = configuration(); cfg.phone = "+911234567890"; cfg.email = "help@example.test";
+    await clinic.save(credentials.admin, cfg);
+    const support = await flow.message("support");
+    expect(support?.state).toBe("SUPPORT_REQUESTED");
+    expect(support?.reply.type === "buttons" && support.reply.body).toContain("+911234567890");
+    expect(support?.reply.type === "buttons" && support.reply.body).toContain("help@example.test");
+
+    const second = whatsappConversation("+919899999992");
+    const slot = await chooseWhatsAppSlot(second.message, `wa-${randomUUID()}@example.test`);
+    expect((await second.message("cancel"))?.state).toBe("MAIN_MENU");
+    expect(await database.db.select({ id: appointments.id }).from(appointments)).toHaveLength(0);
+    expect(slot.startsAt).toContain("T");
+  });
+
+  it("expires interrupted conversations and rejects an invalid email code without registering a patient", async () => {
+    let instant = new Date(now);
+    const flow = whatsappConversation("+919899999993", () => instant);
+    await flow.message("Hi"); await flow.message("book"); await flow.message("Synthetic Patient");
+    instant = new Date(instant.getTime() + 31 * 60_000);
+    expect((await flow.message("not an email"))?.state).toBe("MAIN_MENU");
+
+    const email = `bad-code-${randomUUID()}@example.test`, authFlow = whatsappConversation("+919899999994");
+    await authFlow.message("Hi"); await authFlow.message("book"); await authFlow.message("Synthetic Patient"); await authFlow.message(email);
+    expect((await authFlow.message("1111"))?.state).toBe("WAITING_FOR_EMAIL");
+    expect(await database.db.select().from(patientUser).where(eq(patientUser.email, email))).toHaveLength(0);
+  });
+
+  it("offers no dates when the schedule is closed and rechecks a slot taken mid-conversation", async () => {
+    const closed = configuration(); closed.weeklyHours.forEach((day) => { day.intervals = []; }); await clinic.save(credentials.admin, closed);
+    const noSlots = whatsappConversation("+919899999995");
+    await noSlots.message("Hi"); await noSlots.message("book"); await noSlots.message("Synthetic Patient"); await noSlots.message(`wa-${randomUUID()}@example.test`);
+    const empty = await noSlots.message("0000");
+    expect(empty?.state).toBe("SELECTING_DATE"); expect(empty?.reply.type).toBe("text");
+    expect(empty?.reply.type === "text" && empty.reply.body).toContain("no available appointment times");
+
+    await clinic.save(credentials.admin, configuration());
+    const flow = whatsappConversation("+919899999996"), email = `taken-${randomUUID()}@example.test`;
+    const choice = await chooseWhatsAppSlot(flow.message, email);
+    await service.bookPatient(credentials.other, input(choice.startsAt));
+    const result = await flow.message("confirm_updates");
+    expect(result?.state).toBe("SELECTING_DATE");
+    expect(result?.reply.type === "text" && result.reply.body).toContain("no longer available");
+    expect(await database.db.select().from(appointments)).toHaveLength(1);
+  });
+
+  it("verifies email, books through the shared transaction and safely replays a webhook", async () => {
+    const email = `wa-${randomUUID()}@example.test`, phone = "+919876543210";
+    const waBooking = createBookingService(database.db, { ...identity.access, requirePatientAccess: createPatientBookingAccess(identity.patient) }, protection, clock, whatsappBookingEvents);
+    const send = vi.fn(async () => {});
+    const flow = createWhatsAppConversationService(database.db, waBooking, createSlotAvailabilityService(database.db, clock), identity.patient, { send }, protectionKey, clock);
+    const inbound = (text: string) => flow.process(phone, randomUUID(), text);
+    expect((await inbound("Hi"))?.reply.type).toBe("buttons");
+    await inbound("book"); await inbound("Synthetic WhatsApp Patient"); await inbound(email);
+    const codeReply = await inbound("0000");
+    expect(codeReply?.state).toBe("SELECTING_DATE");
+    expect(codeReply?.reply.type).toBe("list");
+    const dateId = codeReply!.reply.type === "list" ? codeReply!.reply.rows[0].id : "";
+    const timeReply = await inbound(dateId);
+    expect(timeReply?.state).toBe("SELECTING_SLOT");
+    const timeId = timeReply!.reply.type === "list" ? timeReply!.reply.rows[0].id : "";
+    await inbound(timeId);
+    const confirmationId = randomUUID();
+    const confirmed = await flow.process(phone, confirmationId, "confirm_updates");
+    expect(confirmed?.state).toBe("BOOKING_COMPLETED");
+    expect(await database.db.select({ id: appointments.id }).from(appointments).where(eq(appointments.source, "patient"))).toHaveLength(1);
+    const [appointment] = await database.db.select().from(appointments).where(eq(appointments.source, "patient"));
+    expect(protection.decrypt(appointment.id, appointment.contactCiphertext)).toMatchObject({ name: "Synthetic WhatsApp Patient", email, phone });
+    expect(await database.db.select().from(whatsappConsents).where(eq(whatsappConsents.appointmentId, appointment.id))).toMatchObject([{ consented: true }]);
+    expect(await database.db.select().from(whatsappNotifications).where(eq(whatsappNotifications.appointmentId, appointment.id))).toHaveLength(0);
+    const replyCount = send.mock.calls.length;
+    expect(await flow.process(phone, confirmationId, "confirm_updates")).toBeNull();
+    expect(send).toHaveBeenCalledTimes(replyCount + 1);
+    expect(await database.db.select({ id: appointments.id }).from(appointments).where(eq(appointments.source, "patient"))).toHaveLength(1);
+  });
+
+  it("queues one post-commit cancellation notice only for an opted-in verified WhatsApp number", async () => {
+    const waBooking = createBookingService(database.db, { ...identity.access, requirePatientAccess: createPatientBookingAccess(identity.patient) }, protection, clock, whatsappBookingEvents);
+    const principal = await identity.patientAccess.requirePatientAccess(credentials.patient);
+    const receipt = await waBooking.bookForWhatsApp(principal, { requestId: randomUUID(), startsAt: `${date}T09:00:00Z`, name: "Synthetic WhatsApp Patient", phone: "+919876543210", whatsappConsent: true });
+    const cancel = createPatientCancellationService(database.db, identity.patientAccess, clock, whatsappCancellationEvents);
+    await cancel.cancel(credentials.patient, { appointmentId: receipt.id });
+    await cancel.cancel(credentials.patient, { appointmentId: receipt.id });
+    const [job] = await database.db.select().from(whatsappNotifications).where(and(eq(whatsappNotifications.appointmentId, receipt.id), eq(whatsappNotifications.event, "appointment_cancelled")));
+    expect(job?.status).toBe("pending");
+    const sender = { send: vi.fn(async (_visit: { startsAt: Date; timezone: string }, destination?: { to: string; event: "booking_created" | "appointment_cancelled" }) => {
+      expect(destination).toEqual({ to: "+919876543210", event: "appointment_cancelled" }); return { status: "accepted" as const, apiMessageId: "wamid.synthetic" };
+    }) };
+    const delivery = createWhatsAppDelivery(database.db, sender, clock, vi.fn(), async () => "+919876543210");
+    expect(await delivery.sendForAppointmentEvent(receipt.id, "appointment_cancelled")).toBe(true);
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    const [sent] = await database.db.select().from(whatsappNotifications).where(eq(whatsappNotifications.id, job.id));
+    expect(sent).toMatchObject({ status: "accepted", apiMessageId: "wamid.synthetic", attempts: 1 });
+
+    const other = await identity.patientAccess.requirePatientAccess(credentials.other);
+    const second = await waBooking.bookForWhatsApp(other, { requestId: randomUUID(), startsAt: `${date}T09:20:00Z`, name: "Other WhatsApp Patient", phone: "+919876543211", whatsappConsent: true });
+    const doctor = createDoctorAppointmentsService(database.db, identity.access, () => protection, clock, whatsappCancellationEvents);
+    await doctor.cancel(credentials.admin, doctorInput(second.id));
+    const [clinicCancellation] = await database.db.select().from(whatsappNotifications).where(and(eq(whatsappNotifications.appointmentId, second.id), eq(whatsappNotifications.event, "appointment_cancelled")));
+    expect(clinicCancellation?.status).toBe("pending");
+    const dynamicSender = { send: vi.fn(async (_visit: { startsAt: Date; timezone: string }, destination?: { to: string; event: "booking_created" | "appointment_cancelled" }) => {
+      expect(destination).toEqual({ to: "+919876543211", event: "appointment_cancelled" }); return { status: "accepted" as const };
+    }) };
+    const dynamicDelivery = createWhatsAppDelivery(database.db, dynamicSender, clock, vi.fn(), async () => "+919876543211");
+    expect(await dynamicDelivery.runOnce("booking_created")).toBe(false);
+    expect(await dynamicDelivery.runOnce("appointment_cancelled")).toBe(true);
+    expect(dynamicSender.send).toHaveBeenCalledTimes(1);
   });
 });
 

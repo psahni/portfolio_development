@@ -2,6 +2,7 @@ import "server-only";
 import { getDatabase } from "@/db/server";
 import { readAuthEnvironment } from "@/platform/env";
 import { unconfiguredMailer } from "@/platform/mail";
+import { createLocalAuthMailer } from "@/platform/local-auth-mailer";
 import { createIdentity } from "./create-auth";
 
 let identity: ReturnType<typeof createIdentity> | undefined;
@@ -11,7 +12,8 @@ export function getIdentity() {
   if (!identity) {
     const env = readAuthEnvironment();
     const { db } = getDatabase();
-    identity = createIdentity({ db, baseURL: env.APP_URL, patientSecret: env.PATIENT_AUTH_SECRET, staffSecret: env.STAFF_AUTH_SECRET, mailer: unconfiguredMailer, testMode: env.AUTH_TEST_MODE });
+    identity = createIdentity({ db, baseURL: env.APP_URL, patientSecret: env.PATIENT_AUTH_SECRET, staffSecret: env.STAFF_AUTH_SECRET,
+      mailer: env.LOCAL_AUTH_EMAIL_PREVIEW ? createLocalAuthMailer() : unconfiguredMailer, testMode: env.AUTH_TEST_MODE });
   }
   return identity;
 }

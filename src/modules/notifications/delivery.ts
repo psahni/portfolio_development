@@ -6,8 +6,8 @@ import { whatsappAttempts, whatsappConsents, whatsappNotifications } from "@/db/
 import { logWhatsAppFailure, type WhatsAppFailureLogger } from "./logging";
 import type { SendResult, WhatsAppSender } from "./meta";
 
-export function createWhatsAppDelivery(db: ApplicationDatabase, sender: WhatsAppSender, clock = () => new Date(), report: WhatsAppFailureLogger = logWhatsAppFailure) {
-  async function dispatch(appointmentId?: string): Promise<boolean> {
+export function createWhatsAppDelivery(db: ApplicationDatabase, sender: WhatsAppSender, clock = () => new Date(), report: WhatsAppFailureLogger = logWhatsAppFailure, recipientForAppointment?: (appointmentId: string) => Promise<string | null>) {
+  async function dispatch(appointmentId?: string, event?: "booking_created" | "appointment_cancelled"): Promise<boolean> {
     const now = clock();
     // A crashed process may have sent successfully. Never automatically resend its job.
     await db.transaction(async (tx) => {
@@ -18,11 +18,15 @@ export function createWhatsAppDelivery(db: ApplicationDatabase, sender: WhatsApp
       }
     });
     const claimed = await db.transaction(async (tx) => {
-      const [job] = await tx.select().from(whatsappNotifications).where(and(eq(whatsappNotifications.status, "pending"), lte(whatsappNotifications.availableAt, now), appointmentId ? eq(whatsappNotifications.appointmentId, appointmentId) : undefined)).orderBy(asc(whatsappNotifications.availableAt), asc(whatsappNotifications.id)).limit(1).for("update", { skipLocked: true });
+      const [job] = await tx.select().from(whatsappNotifications).where(and(eq(whatsappNotifications.status, "pending"), lte(whatsappNotifications.availableAt, now), appointmentId ? eq(whatsappNotifications.appointmentId, appointmentId) : undefined, event ? eq(whatsappNotifications.event, event) : undefined)).orderBy(asc(whatsappNotifications.availableAt), asc(whatsappNotifications.id)).limit(1).for("update", { skipLocked: true });
       if (!job) return null;
       const [consent] = await tx.select().from(whatsappConsents).where(eq(whatsappConsents.appointmentId, job.appointmentId));
-      const [visit] = await tx.select({ startsAt: appointments.startsAt, timezone: appointments.timezone, status: appointments.status }).from(appointments).where(eq(appointments.id, job.appointmentId));
-      if (!consent?.consented || consent.withdrawn || !visit || visit.status !== "confirmed" || visit.startsAt <= now) {
+      const [visit] = await tx.select({ startsAt: appointments.startsAt, timezone: appointments.timezone, status: appointments.status,
+        patientCancelledAt: appointments.patientCancelledAt, cancelledAt: appointments.cancelledAt, whatsappNumberVerified: appointments.whatsappNumberVerified }).from(appointments).where(eq(appointments.id, job.appointmentId));
+      const isCurrent = job.event === "booking_created"
+        ? visit?.status === "confirmed" && visit.startsAt > now
+        : visit?.status === "cancelled" && (visit.patientCancelledAt !== null || visit.cancelledAt !== null) && visit.whatsappNumberVerified;
+      if (!consent?.consented || consent.withdrawn || !visit || !isCurrent) {
         await tx.update(whatsappNotifications).set({ status: "suppressed", errorCode: "INACTIVE_CONSENT_OR_VISIT", updatedAt: now }).where(eq(whatsappNotifications.id, job.id));
         return { suppressed: true as const };
       }
@@ -37,8 +41,14 @@ export function createWhatsAppDelivery(db: ApplicationDatabase, sender: WhatsApp
     const [consent] = await db.select().from(whatsappConsents).where(eq(whatsappConsents.appointmentId, claimed.job.appointmentId));
     let result: SendResult | { status: "suppressed"; errorCode: string };
     if (!consent?.consented || consent.withdrawn) result = { status: "suppressed", errorCode: "CONSENT_WITHDRAWN" };
+    else if (claimed.job.event === "appointment_cancelled" && !recipientForAppointment) result = { status: "failed", errorCode: "RECIPIENT_UNAVAILABLE" };
     else {
-      try { result = await sender.send(claimed.visit); }
+      try {
+        const to = claimed.job.event === "appointment_cancelled" ? await recipientForAppointment!(claimed.job.appointmentId) : undefined;
+        result = claimed.job.event === "appointment_cancelled" && !to
+          ? { status: "failed", errorCode: "RECIPIENT_UNAVAILABLE" }
+          : await sender.send(claimed.visit, to ? { to, event: claimed.job.event === "appointment_cancelled" ? "appointment_cancelled" : "booking_created" } : undefined);
+      }
       catch { result = { status: "uncertain", errorCode: "SENDER_INTERRUPTED" }; }
     }
     const finished = clock();
@@ -56,5 +66,5 @@ export function createWhatsAppDelivery(db: ApplicationDatabase, sender: WhatsApp
     if (result.status === "failed" || result.status === "uncertain") report({ appointmentId: claimed.job.appointmentId, status: result.status, code: result.errorCode ?? "SEND_FAILED" });
     return true;
   }
-  return { runOnce: () => dispatch(), sendForAppointment: (appointmentId: string) => dispatch(appointmentId) };
+  return { runOnce: (event?: "booking_created" | "appointment_cancelled") => dispatch(undefined, event), sendForAppointment: (appointmentId: string) => dispatch(appointmentId), sendForAppointmentEvent: (appointmentId: string, event: "booking_created" | "appointment_cancelled") => dispatch(appointmentId, event) };
 }

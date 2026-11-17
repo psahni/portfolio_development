@@ -112,12 +112,13 @@ export function createBookingService(db: ApplicationDatabase, access: BookingAcc
         await tx.insert(appointments).values({ id, doctorId: 1, reservationId: reservation.id,
           patientUserId: actor.kind === "patient" ? actor.userId : null, createdByStaffId: actor.kind === "staff" ? actor.userId : null,
           source: actor.kind === "patient" ? "patient" : "clinic", contactCiphertext: protection.encrypt(id, contact),
+          whatsappNumberVerified: actor.channel === "whatsapp",
           startsAt: new Date(slot.startsAt), endsAt: new Date(slot.endsAt), timezone: config.timezone,
           durationMinutes: config.durationMinutes, bufferBeforeMinutes: config.bufferBeforeMinutes, bufferAfterMinutes: config.bufferAfterMinutes, createdAt: now });
         await tx.insert(bookingAudit).values({ appointmentId: id, actorKind: actor.kind, actorId: actor.userId, createdAt: now });
         await tx.insert(bookingRequests).values({ actorKind: actor.kind, actorId: actor.userId, requestId: input.requestId,
           fingerprint, appointmentId: id, receipt, createdAt: now, expiresAt: new Date(now.getTime() + RETRY_WINDOW_MS) });
-        await events.created?.(tx, { appointmentId: id, whatsappConsent, at: now, actorKind: actor.kind, receipt, clinic: config });
+        await events.created?.(tx, { appointmentId: id, whatsappConsent, at: now, actorKind: actor.kind, channel: actor.channel ?? "web", receipt, clinic: config });
         return receipt;
       }, { isolationLevel: "read committed" });
     } catch (error) {
@@ -128,11 +129,16 @@ export function createBookingService(db: ApplicationDatabase, access: BookingAcc
 
   async function bookPatient(headers: Headers, input: unknown) {
     const principal = await access.requirePatientAccess(headers);
-    return save({ kind: "patient", ...principal }, patientBookingSchema.parse(input));
+    return save({ kind: "patient", ...principal, channel: "web" }, patientBookingSchema.parse(input));
+  }
+  // Only the signed webhook conversation service calls this path. The persisted patient
+  // session is rechecked inside the booking transaction just like a browser session.
+  async function bookForWhatsApp(principal: { userId: string; sessionId: string }, input: unknown) {
+    return save({ kind: "patient", ...principal, channel: "whatsapp" }, patientBookingSchema.parse(input));
   }
   async function bookForClinic(headers: Headers, input: unknown) {
     const principal = await access.requireClinicAccess(headers);
     return save({ kind: "staff", userId: principal.userId, sessionId: principal.sessionId }, clinicBookingSchema.parse(input));
   }
-  return { bookPatient, bookForClinic };
+  return { bookPatient, bookForClinic, bookForWhatsApp };
 }

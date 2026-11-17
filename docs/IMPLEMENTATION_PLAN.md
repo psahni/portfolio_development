@@ -2,7 +2,7 @@
 
 **Status: patient-booking-first priority selected. ✅ Clinic settings [#6](https://github.com/psahni/portfolio_development/issues/6) and availability [#7](https://github.com/psahni/portfolio_development/issues/7) merged. Doctor calendar #20, shared booking #24 and patient sign-in/listing #10 are merged. Hosted patient booking #11 is merged into `main`; appointment management follows. Staff management #4 is merged into `main`; receptionist booking and agenda #8 are implemented on this review branch. Use GitHub issues as task specs.**
 
-**Progress:** ✅ M1 foundation, M2.1 access checks and M2.2 shared clinic login are implemented. The [auth revision](specs/AUTH_CODE_REVISION.md) records the flow and checks. Staff management #4 is merged into `main`; receptionist booking and agenda #8 are implemented on this review branch; PIN-change screens and real email delivery remain pending.
+**Progress:** ✅ M1 foundation, M2.1 access checks and M2.2 shared clinic login are implemented. The [auth revision](specs/AUTH_CODE_REVISION.md) records the flow and checks. Staff management #4 and receptionist booking/agenda #8 are on `main`. WhatsApp conversational booking #49 is implemented on this review branch with local-only generated email-code previews; real email transport and live Meta setup remain external, unverified work.
 
 Scope: **one clinic, one branch and one doctor**. Multiple clinics/branches are deferred.
 
@@ -12,7 +12,7 @@ The MVP includes native patient booking and an admin/staff interface. PostgreSQL
 
 **Approved cancellation addition (#40):** Any active staff can cancel any future confirmed clinic-created appointment, with a required nonclinical reason; admin-only blocking/rebooking instructions and patient-created cancellation remain enforced. Add date-preserving Confirmed/Cancelled agenda tabs and retain other status history. No cancellation notifications in this slice.
 
-**Current approved slice:** #8 receptionist booking and daily agenda: active admin/staff create appointments through the shared booking service and read `/admin/appointments`; staff may cancel future confirmed clinic-created appointments with a required reason; patient-created cancellation and blocking remain admin-only. Implemented on this review branch; staff management #4 is merged in PR #37. WhatsApp #15 Phase 1 is merged; the post-integration review is recorded in PR #36. Production/dynamic recipients, webhooks, reminders and cancellation messages remain deferred.
+**Current slice:** #49 WhatsApp conversational booking: verify email with a generated one-time code before slot selection, reuse the shared booking service, and send consented WhatsApp confirmations/cancellation notices to verified patient numbers. Implementation is limited to the configured Meta Cloud API and the one-clinic/one-doctor model. No real email provider, paid account setup, deployment or real-patient use is included.
 
 **Delivery priority:** Complete working features one approved task at a time. Keep essential access checks, input validation and credential protection; defer sophisticated security infrastructure to the separate M6 security-hardening task.
 

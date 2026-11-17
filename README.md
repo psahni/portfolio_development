@@ -6,6 +6,8 @@ Native booking for one clinic, one branch and one doctor. The selected patient-b
 
 **Testing now:** Follow the [testing steps](docs/TESTING.md). With localhost `AUTH_TEST_MODE=true`, open `/login`, enter a synthetic email such as `patient@example.test`, request a code and enter `0000`. New patients are created automatically after the code is checked; no signup form or seed command is needed.
 
+**Local email-code preview:** For generated one-time codes (instead of the fixed `0000` test code), set `LOCAL_AUTH_EMAIL_PREVIEW=true` in `.env.local` and leave `AUTH_TEST_MODE=false`. Request a patient or staff code, then inspect `.local/email-preview.log`. This is a simulated email only; no email is sent. The log contains the generated sign-in code, is ignored by Git and written with owner-only file permissions. This option is rejected outside local development/test and must never be enabled in production. Keep using synthetic accounts and clear the local log when finished.
+
 **Clinic setup (#6):** After migration, sign in as admin and open **Clinic settings** in the workspace. Save clinic/doctor details, select a timezone, set appointment rules and add weekly opening intervals. Closed days have no intervals; settings persist across restarts.
 
 **Availability (#7):** Open **Availability** in the workspace to preview slots, mark a holiday, set special hours for one date or add/remove a personal break. Restoring weekly hours keeps separately saved breaks. Previewing and selecting a slot do not reserve it; `/book` confirms through the shared booking service.
@@ -114,6 +116,24 @@ Inspect `whatsapp_notifications` for pending/sending/accepted/failed/uncertain/s
 
 Phase 2 covers production sender registration, dynamic patient recipients and further tracking. Reminders, cancellation messages and webhooks are not implemented in Phase 1. Local verification uses Meta mocks; real sending requires locally configured test credentials and the approved recipient.
 
+
+## WhatsApp conversational booking (#49)
+
+Apply migrations `0010_whatsapp_conversations.sql` and `0011_whatsapp_notifications.sql` before enabling this feature. Set `LOCAL_AUTH_EMAIL_PREVIEW=true`, leave `AUTH_TEST_MODE=false`, and enable `WHATSAPP_CONVERSATION_ENABLED=true` only for local/test. The generated email verification code is written to the ignored, owner-only `.local/email-preview.log`; no email is sent. The WhatsApp number comes from the signed Meta webhook and is stored with the appointment inside the existing contact-encryption envelope. The flow verifies the patient's email through the existing patient OTP identity, reads availability from the shared scheduling service, and commits through the shared booking service.
+
+In Meta's Developer Console, configure the WhatsApp Cloud API phone number ID in `WHATSAPP_PHONE_NUMBER_ID`, the access token/API version, the app secret and a random webhook verify token in `.env.local`. Set the callback URL to `https://<your-https-tunnel>/api/webhooks/whatsapp`, enter the same verify token in Meta, and subscribe the WhatsApp Business Account to `messages`. Keep tokens in `.env.local`; do not paste them into issues or source control. The existing Phase 1 `WHATSAPP_TEST_PHONE_NUMBER_ID` and fixed recipient remain separate.
+
+For a synthetic local webhook check, start the app, enable the local preview, and use a tunnel URL when completing Meta's webhook verification. To exercise the signed local endpoint without Meta, export the app secret in your shell and send a synthetic webhook:
+
+```sh
+payload='{"object":"whatsapp_business_account","entry":[{"changes":[{"field":"messages","value":{"messages":[{"id":"wamid.local.1","from":"919876543210","text":{"body":"Hi"}}]}}]}]}'
+signature=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$WHATSAPP_APP_SECRET" -hex | awk '{print $2}')
+curl -i -X POST http://localhost:3000/api/webhooks/whatsapp \
+  -H "X-Hub-Signature-256: sha256=$signature" \
+  -H 'Content-Type: application/json' --data-binary "$payload"
+```
+
+Complete the chat with the configured synthetic WhatsApp test recipient: send **Hi**, select booking, enter a synthetic name and email, read the generated code in `.local/email-preview.log`, then choose a date/time. The final prompt offers WhatsApp updates or confirmation only. The booking confirmation reply is sent only after the booking transaction commits. Cancellation notifications are queued atomically only for a WhatsApp-origin booking with active consent; configure an approved `WHATSAPP_CANCELLATION_TEMPLATE_NAME`/language template with body parameters for appointment time and timezone. With worker mode enabled, run `pnpm worker:whatsapp --watch`; with `WHATSAPP_USE_WORKER=false`, a cancellation request makes one bounded post-commit attempt. Meta acceptance is recorded as acceptance, not delivery. No external account setup, real email, paid provisioning or deployment is performed by this code.
 
 ## Local clinic booking email preview
 

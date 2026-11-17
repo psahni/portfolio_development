@@ -77,7 +77,7 @@ describe("WhatsApp delivery mode", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const bookPatient = vi.fn(async () => receipt), after = vi.fn(async () => { throw new Error("private-token"); });
-      const handler = createPatientBookingHandler(() => ({ bookPatient, bookForClinic: vi.fn() }), () => "http://localhost:3000", after);
+      const handler = createPatientBookingHandler(() => ({ bookPatient, bookForClinic: vi.fn(), bookForWhatsApp: vi.fn() }), () => "http://localhost:3000", after);
       const response = await handler(new Request("http://localhost:3000/api/patient/bookings", { method: "POST", headers: { origin: "http://localhost:3000", "content-type": "application/json" }, body: "{}" }));
       expect(response.status).toBe(200); expect(await response.json()).toEqual({ receipt });
       expect(after).toHaveBeenCalledWith(receipt); expect(warn).toHaveBeenCalledTimes(1);

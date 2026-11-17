@@ -71,6 +71,20 @@
       "when": 1794549914376,
       "tag": "0009_local_booking_email",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794909613472,
+      "tag": "0010_whatsapp_conversations",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794910095426,
+      "tag": "0011_whatsapp_notifications",
+      "breakpoints": true
     }
   ]
 }

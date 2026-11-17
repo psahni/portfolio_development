@@ -11,12 +11,13 @@ import { clinicDate, dayBounds } from "@/modules/scheduling/engine";
 import type { ContactProtection } from "./contact-protection";
 import { doctorCancellationSchema, doctorDateSchema, type DoctorAppointmentsView } from "./doctor-models";
 import { BookingError, type CancellationReceipt } from "./models";
+import type { BookingCancellationEvents } from "./events";
 
 type ClinicAccess = {
   requireClinicAccess(headers: Headers): Promise<ClinicPrincipal>;
 };
 
-export function createDoctorAppointmentsService(db: ApplicationDatabase, access: ClinicAccess, getProtection: () => ContactProtection, clock = () => new Date()) {
+export function createDoctorAppointmentsService(db: ApplicationDatabase, access: ClinicAccess, getProtection: () => ContactProtection, clock = () => new Date(), events: BookingCancellationEvents = {}) {
   async function view(headers: Headers, selectedDate?: string): Promise<DoctorAppointmentsView> {
     const principal = await access.requireClinicAccess(headers);
     const requested = doctorDateSchema.parse(selectedDate);
@@ -81,6 +82,7 @@ export function createDoctorAppointmentsService(db: ApplicationDatabase, access:
         : await tx.delete(reservations).where(scope).returning({ id: reservations.id });
       if (changed.length !== 1) throw new Error("Appointment occupancy could not be changed.");
       await tx.insert(bookingAudit).values({ appointmentId: appointment.id, action: "cancelled", actorKind: "staff", actorId: principal.userId, createdAt: now });
+      await events.cancelled?.(tx, { appointmentId: appointment.id, at: now });
       return receipt;
     }, { isolationLevel: "read committed" });
   }

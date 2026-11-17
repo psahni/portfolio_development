@@ -12,7 +12,7 @@ const valid = {
 
 describe("server configuration", () => {
   it("accepts distinct secrets and PostgreSQL configuration", () => {
-    expect(readAuthEnvironment(valid)).toEqual({ ...valid, AUTH_TEST_MODE: false });
+    expect(readAuthEnvironment(valid)).toEqual({ ...valid, AUTH_TEST_MODE: false, LOCAL_AUTH_EMAIL_PREVIEW: false });
   });
   it("reports missing field names without printing input values", () => {
     expect(() => readAuthEnvironment({ ...valid, DATABASE_URL: "secret-database-value", STAFF_AUTH_SECRET: "private-short-secret" })).toThrow("DATABASE_URL, STAFF_AUTH_SECRET");
@@ -42,6 +42,13 @@ describe("server configuration", () => {
     expect(() => readAuthEnvironment({ ...valid, APP_URL: "https://clinic.example.test", AUTH_TEST_MODE: "true" })).toThrow("AUTH_TEST_MODE");
     expect(() => readAuthEnvironment({ ...valid, AUTH_TEST_MODE: "yes" })).toThrow("AUTH_TEST_MODE");
     expect(resolveTestAuthMode(false, "https://clinic.example.test")).toBe(false);
+  });
+  it("allows local email preview only in local development/test", () => {
+    expect(readAuthEnvironment({ ...valid, LOCAL_AUTH_EMAIL_PREVIEW: "true" }).LOCAL_AUTH_EMAIL_PREVIEW).toBe(true);
+    expect(() => readAuthEnvironment({ ...valid, APP_URL: "https://clinic.example.test", LOCAL_AUTH_EMAIL_PREVIEW: "true" })).toThrow("LOCAL_AUTH_EMAIL_PREVIEW");
+    vi.stubEnv("NODE_ENV", "production");
+    try { expect(() => readAuthEnvironment({ ...valid, APP_URL: "https://localhost", LOCAL_AUTH_EMAIL_PREVIEW: "true" })).toThrow("LOCAL_AUTH_EMAIL_PREVIEW"); }
+    finally { vi.unstubAllEnvs(); }
   });
   it("rejects test authentication in production even with a localhost origin", () => {
     vi.stubEnv("NODE_ENV", "production");

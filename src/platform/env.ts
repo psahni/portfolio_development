@@ -15,6 +15,7 @@ const authEnvironment = z.object({
   PATIENT_AUTH_SECRET: z.string().min(32),
   STAFF_AUTH_SECRET: z.string().min(32),
   AUTH_TEST_MODE: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  LOCAL_AUTH_EMAIL_PREVIEW: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 }).superRefine((value, ctx) => {
   if (value.PATIENT_AUTH_SECRET === value.STAFF_AUTH_SECRET) {
     ctx.addIssue({ code: "custom", path: ["STAFF_AUTH_SECRET"], message: "Use a distinct secret" });
@@ -25,6 +26,10 @@ const authEnvironment = z.object({
   if (value.AUTH_TEST_MODE) {
     try { resolveTestAuthMode(true, value.APP_URL); }
     catch { ctx.addIssue({ code: "custom", path: ["AUTH_TEST_MODE"], message: "Local development/test only" }); }
+  }
+  if (value.LOCAL_AUTH_EMAIL_PREVIEW) {
+    try { resolveTestAuthMode(true, value.APP_URL); }
+    catch { ctx.addIssue({ code: "custom", path: ["LOCAL_AUTH_EMAIL_PREVIEW"], message: "Local development/test only" }); }
   }
 });
 

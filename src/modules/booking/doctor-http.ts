@@ -4,8 +4,9 @@ import { ZodError } from "zod";
 import type { createDoctorAppointmentsService } from "./doctor-appointments";
 import { BookingError } from "./models";
 import { SchedulingError } from "@/modules/scheduling/models";
+import type { CancellationReceipt } from "./models";
 
-export function createDoctorAppointmentsHandler(getService: () => ReturnType<typeof createDoctorAppointmentsService>, getTrustedOrigin: () => string) {
+export function createDoctorAppointmentsHandler(getService: () => ReturnType<typeof createDoctorAppointmentsService>, getTrustedOrigin: () => string, afterCancellation: (receipt: CancellationReceipt) => Promise<void> = async () => {}) {
   return async (request: Request) => {
     const respond = (body: object, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "private, no-store", Vary: "Cookie" } });
     try {
@@ -13,7 +14,10 @@ export function createDoctorAppointmentsHandler(getService: () => ReturnType<typ
       if (request.method !== "POST") return respond({ error: "Method not allowed." }, 405);
       if (request.headers.get("origin") !== new URL(getTrustedOrigin()).origin) return respond({ error: "Request origin is not permitted." }, 403);
       const input: unknown = await request.json();
-      return respond({ appointment: await getService().cancel(request.headers, input) });
+      const appointment = await getService().cancel(request.headers, input);
+      try { await afterCancellation(appointment); }
+      catch { console.warn("Appointment cancelled; WhatsApp notice remains unresolved (POST_COMMIT_FAILURE)."); }
+      return respond({ appointment });
     } catch (error) {
       if (isAPIError(error) && (error.status === "UNAUTHORIZED" || error.status === "FORBIDDEN")) return respond({ error: "Active clinic access is required. Sign in again." }, error.statusCode);
       if (error instanceof BookingError) return respond({ code: error.code, error: error.message }, error.statusCode);

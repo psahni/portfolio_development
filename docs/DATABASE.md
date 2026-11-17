@@ -1,6 +1,6 @@
 # Nuvortiq Smart Booking — MVP Database
 
-**Status:** Auth, clinic settings, availability and shared booking persistence are implemented. Integration tables remain planned.
+**Status:** Auth, clinic settings, availability, shared booking and WhatsApp conversational booking persistence are implemented on the current review branch.
 
 Use **PostgreSQL**, **Drizzle ORM** and **Drizzle Kit** for one clinic, one branch and one doctor. PostgreSQL is the booking source of truth. No tenant or branch tables are needed.
 
@@ -41,3 +41,7 @@ Migration `0007` adds nullable patient cancellation timestamp/late classificatio
 Migration `0008_whatsapp_phase_one.sql` adds separate `whatsapp_consents`, `whatsapp_notifications` and `whatsapp_attempts` tables. Consent retains the server recording time and withdrawal status/time. One unique appointment/event job joins the creation transaction; attempts contain safe codes and API message IDs, never access tokens or raw provider bodies. Existing bookings are not backfilled. The GiST occupancy constraint is unchanged.
 
 Migration `0009_local_booking_email.sql` adds `local_booking_emails`: one local simulation job per appointment, a clinic/template snapshot without patient contacts and a nullable log-completion timestamp. The job joins the booking transaction only for clinic-created bookings on localhost development/test when `SMTP_HOST` is absent or blank. It does not change existing tables or the GiST exclusion constraint.
+
+Migration `0010_whatsapp_conversations.sql` adds `whatsapp_conversations` and `whatsapp_webhook_messages`. Sender numbers are indexed by a keyed hash; conversation contents (including the number and temporary booking details) are encrypted with a key derived from `BOOKING_DATA_KEY`. Meta message IDs prevent duplicate webhook processing. These tables do not contain raw message payloads or OTPs.
+
+Migration `0011_whatsapp_notifications.sql` adds `appointments.whatsapp_number_verified`, set only when the booking is created from a signature-verified WhatsApp conversation. `whatsapp_notifications` permits an `appointment_cancelled` event in addition to `booking_created`. Patient and clinic cancellation create a notification job in the same transaction only when the appointment has a verified WhatsApp number and active appointment-specific consent. Provider delivery remains post-commit and uses the existing safe attempt records. Existing appointments default to an unverified number and are not backfilled.
